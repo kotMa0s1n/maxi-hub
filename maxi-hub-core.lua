@@ -2433,9 +2433,8 @@ end
 
 -- Главная (габариты: UI_LAYOUT + ui-layout.mdc)
 mainPage = contentPages[1]
-L = UI_LAYOUT
 
-controlsPanel = makeFlowPanel(mainPage, L("panel_controls"), L.PANEL_W, 200, 0, 0, nil, "panel_controls")
+controlsPanel = makeFlowPanel(mainPage, L("panel_controls"), UI_LAYOUT.PANEL_W, 200, 0, 0, nil, "panel_controls")
 
 makeFlowToggle(controlsPanel, L("toggle_autostart"), AutoStartFarm, function(state)
 	AutoStartFarm = state
@@ -2455,7 +2454,7 @@ makeFlowToggle(controlsPanel, L("toggle_rejoin"), RejoinAutoLoad, function(state
 	end
 end, 3, 0.78, "toggle_rejoin")
 
-sessionPanel = makeFlowPanel(mainPage, L("panel_session"), L.PANEL_W, L.PANEL_H, L.PANEL_COL2_X, 0, L.SESSION_BODY_Y, "panel_session")
+sessionPanel = makeFlowPanel(mainPage, L("panel_session"), UI_LAYOUT.PANEL_W, UI_LAYOUT.PANEL_H, UI_LAYOUT.PANEL_COL2_X, 0, UI_LAYOUT.SESSION_BODY_Y, "panel_session")
 
 sessionStatLabels.phase = makeStatRow(sessionPanel, L("stat_status"), 1, "stat_status")
 sessionStatLabels.trees = makeStatRow(sessionPanel, L("stat_trees"), 2, "stat_trees")
@@ -2464,14 +2463,14 @@ sessionStatLabels.loot = makeStatRow(sessionPanel, L("stat_loot"), 4, "stat_loot
 sessionStatLabels.time = makeStatRow(sessionPanel, L("stat_time"), 5, "stat_time")
 sessionStatLabels.mode = makeStatRow(sessionPanel, L("stat_mode"), 6, "stat_mode")
 
-slidersPanel = makeFlowPanel(mainPage, L("panel_tp_height"), L.FULL_W, L.SLIDER_PANEL_H, 0, L.ROW3_Y, L.SLIDER_BODY_Y, "panel_tp_height")
+slidersPanel = makeFlowPanel(mainPage, L("panel_tp_height"), UI_LAYOUT.FULL_W, UI_LAYOUT.SLIDER_PANEL_H, 0, UI_LAYOUT.ROW3_Y, UI_LAYOUT.SLIDER_BODY_Y, "panel_tp_height")
 
 makeSlider(slidersPanel, 0, L("slider_trees"), 0, 12, TeleportHeight, function(v)
 	TeleportHeight = v
 	scheduleSaveConfig()
 end, "slider_trees")
 
-makeSlider(slidersPanel, L.SLIDER_Y_STEP, L("slider_stones"), 0, 12, StoneTeleportHeight, function(v)
+makeSlider(slidersPanel, UI_LAYOUT.SLIDER_Y_STEP, L("slider_stones"), 0, 12, StoneTeleportHeight, function(v)
 	StoneTeleportHeight = v
 	scheduleSaveConfig()
 end, "slider_stones")
@@ -2488,7 +2487,7 @@ setWrap = makeListWrap(setScroll)
 makeSectionTitle(setWrap, L("sec_mining"), 1, "sec_mining")
 
 mineBox = Instance.new("Frame")
-mineBox.Size = UDim2.new(1, 0, 0, L.MINE_BOX_H)
+mineBox.Size = UDim2.new(1, 0, 0, UI_LAYOUT.MINE_BOX_H)
 mineBox.BackgroundTransparency = 1
 mineBox.LayoutOrder = 2
 mineBox.Parent = setWrap
@@ -2498,17 +2497,17 @@ makeToggle(mineBox, 0, L("toggle_orbit"), OrbitEnabled, function(state)
 	scheduleSaveConfig()
 end, nil, "toggle_orbit")
 
-makeToggle(mineBox, L.TOGGLE_Y_STEP, L("toggle_aim"), AimAtTarget, function(state)
+makeToggle(mineBox, UI_LAYOUT.TOGGLE_Y_STEP, L("toggle_aim"), AimAtTarget, function(state)
 	AimAtTarget = state
 	scheduleSaveConfig()
 end, nil, "toggle_aim")
 
-makeToggle(mineBox, L.TOGGLE_Y_STEP * 2, L("toggle_fkey"), UseFKey, function(state)
+makeToggle(mineBox, UI_LAYOUT.TOGGLE_Y_STEP * 2, L("toggle_fkey"), UseFKey, function(state)
 	UseFKey = state
 	scheduleSaveConfig()
 end, nil, "toggle_fkey")
 
-makeToggle(mineBox, L.TOGGLE_Y_STEP * 3, L("toggle_click"), UseClick, function(state)
+makeToggle(mineBox, UI_LAYOUT.TOGGLE_Y_STEP * 3, L("toggle_click"), UseClick, function(state)
 	UseClick = state
 	if state then
 		releaseMouseHold()
@@ -2517,7 +2516,7 @@ makeToggle(mineBox, L.TOGGLE_Y_STEP * 3, L("toggle_click"), UseClick, function(s
 end)
 
 slidersBox = Instance.new("Frame")
-slidersBox.Size = UDim2.new(1, 0, 0, L.SLIDERS_BOX_H)
+slidersBox.Size = UDim2.new(1, 0, 0, UI_LAYOUT.SLIDERS_BOX_H)
 slidersBox.BackgroundTransparency = 1
 slidersBox.LayoutOrder = 3
 slidersBox.Parent = setWrap
@@ -2527,7 +2526,7 @@ makeSlider(slidersBox, 0, L("slider_orbit_speed"), 0.3, 3, OrbitSpeed, function(
 	scheduleSaveConfig()
 end, "slider_orbit_speed")
 
-makeSlider(slidersBox, L.SLIDER_Y_STEP, L("slider_orbit_size"), 4, 30, OrbitDiameter, function(v)
+makeSlider(slidersBox, UI_LAYOUT.SLIDER_Y_STEP, L("slider_orbit_size"), 4, 30, OrbitDiameter, function(v)
 	OrbitDiameter = v
 	scheduleSaveConfig()
 end, "slider_orbit_size")
@@ -2535,7 +2534,7 @@ end, "slider_orbit_size")
 makeSectionTitle(setWrap, L("sec_safety"), 4, "sec_safety")
 
 safeBox = Instance.new("Frame")
-safeBox.Size = UDim2.new(1, 0, 0, L.SAFE_BOX_H)
+safeBox.Size = UDim2.new(1, 0, 0, UI_LAYOUT.SAFE_BOX_H)
 safeBox.BackgroundTransparency = 1
 safeBox.LayoutOrder = 5
 safeBox.Parent = setWrap
@@ -2545,7 +2544,7 @@ makeToggle(safeBox, 0, L("toggle_block_ui"), BlockUiDuringFarm, function(state)
 	scheduleSaveConfig()
 end, nil, "toggle_block_ui")
 
-makeToggle(safeBox, L.TOGGLE_Y_STEP, L("toggle_block_trades"), BlockTrades, function(state)
+makeToggle(safeBox, UI_LAYOUT.TOGGLE_Y_STEP, L("toggle_block_trades"), BlockTrades, function(state)
 	BlockTrades = state
 	if FarmEnabled then
 		scanTrades(playerGui)
@@ -2580,7 +2579,7 @@ makeToggle(zoneBox, 0, L("toggle_antitp"), BlockedZonesEnabled, function(state)
 end, nil, "toggle_antitp")
 
 zoneSliderBox = Instance.new("Frame")
-zoneSliderBox.Size = UDim2.new(1, 0, 0, L.SLIDER_Y_STEP)
+zoneSliderBox.Size = UDim2.new(1, 0, 0, UI_LAYOUT.SLIDER_Y_STEP)
 zoneSliderBox.BackgroundTransparency = 1
 zoneSliderBox.LayoutOrder = 9
 zoneSliderBox.Parent = setWrap
@@ -2675,7 +2674,7 @@ makeToggle(sellBox, 0, L("toggle_autosell"), AutoSellEnabled, function(state)
 	scheduleSaveConfig()
 end, nil, "toggle_autosell")
 
-makeSlider(sellBox, L.TOGGLE_Y_STEP, L("slider_sell_check"), 20, 120, SellCheckInterval, function(v)
+makeSlider(sellBox, UI_LAYOUT.TOGGLE_Y_STEP, L("slider_sell_check"), 20, 120, SellCheckInterval, function(v)
 	SellCheckInterval = math.floor(v)
 	scheduleSaveConfig()
 end, "slider_sell_check")
