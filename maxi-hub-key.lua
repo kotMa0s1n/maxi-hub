@@ -1,8 +1,13 @@
---[[ MAXI HUB · maxi-hub-key.lua — см. также maxi-hub-key.lua в корне проекта ]]
+--[[ MAXI HUB · maxi-hub-key.lua — Panda Key System (Pelinda V3 External) ]]
 
 local HttpService = game:GetService("HttpService")
 
 local MaxiHubKey = {}
+
+local PANDA_LIB_URLS = {
+	"https://api.pandauth.com/lib/external/panda-v3-external.lua",
+	"https://api.pandauth.com/lib/external/v3.lua",
+}
 
 local function defaultHttpRequest(opts)
 	if typeof(request) == "function" then
@@ -23,193 +28,255 @@ local function canUseFiles()
 		and typeof(isfile) == "function"
 end
 
+local function safeCopy(text)
+	if typeof(setclipboard) == "function" and type(text) == "string" and text ~= "" then
+		pcall(setclipboard, text)
+		return true
+	end
+	return false
+end
+
 function MaxiHubKey.create(config)
 	config = config or {}
 
 	local WEBHOOK = config.webhook or ""
 	local TELEGRAM = config.telegram or "https://t.me/MAXI_HUB"
 	local CACHE_FILE = config.cacheFile or "maxi-hub-key-cache.json"
-	local SECRET = config.secret or "MAXIHUB_KEY_TEST_V1"
-	local CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-	local REQUEST_COOLDOWN = config.requestCooldown or 60
+	local SAVE_KEY_PATH = config.saveKeyPath or "MAXI-HUB-key.txt"
+	local PANDA_SERVICE = config.pandaService or "maxihub"
+	local HUB_NAME = config.hubName or "🔰MAXI HUB"
+	local MAX_RETRIES = config.maxRetries or 3
+	local GET_KEY_URL = config.getKeyUrl or config.purchaseUrl or TELEGRAM
+	local SILENT_MODE = config.silentMode == true
 
 	local player = config.player
 	local playerGui = config.playerGui
 	local httpRequest = config.httpRequest or defaultHttpRequest
 	local canUseConfigFile = config.canUseFiles or canUseFiles
-	local onGranted = config.onGranted
-	local getActivationExtraFields = config.getActivationExtraFields
-
-	local PURCHASE_MESSAGE = config.purchaseMessage
-		or "Доступ не оплачен.\nКупить доступ в Telegram:"
 
 	local keyGateGui = nil
+	local Pelinda = nil
+	local lastExpiresAt = nil
+	local lastIsPremium = false
+
+	local KEY_COLORS = {
+		bg = Color3.fromRGB(14, 16, 18),
+		card = Color3.fromRGB(20, 24, 26),
+		panel = Color3.fromRGB(26, 30, 33),
+		accent = Color3.fromRGB(0, 198, 178),
+		accentSoft = Color3.fromRGB(0, 158, 142),
+		text = Color3.fromRGB(242, 246, 248),
+		muted = Color3.fromRGB(125, 135, 142),
+		success = Color3.fromRGB(52, 199, 89),
+		error = Color3.fromRGB(248, 113, 113),
+		border = Color3.fromRGB(40, 48, 52),
+		inputBg = Color3.fromRGB(14, 16, 18),
+	}
 
 	local function formatTime(ts)
+		if type(ts) ~= "number" then
+			return "—"
+		end
 		return os.date("%d.%m.%Y %H:%M", ts)
 	end
 
-	local function sig2(prefix, expHour)
-		local h = 0
-		local s = prefix .. tostring(expHour) .. SECRET
-		for i = 1, #s do
-			h = (h * 31 + string.byte(s, i)) % 1024
+	local function parseIsoExpires(iso)
+		if type(iso) ~= "string" or iso == "" then
+			return nil
 		end
-		local a = (h % 32) + 1
-		local b = (math.floor(h / 32) % 32) + 1
-		return CHARSET:sub(a, a) .. CHARSET:sub(b, b)
+		local y, mo, d, h, mi, s = iso:match("^(%d+)%-(%d+)%-(%d+)T(%d+):(%d+):(%d+)")
+		if not y then
+			return nil
+		end
+		return os.time({
+			year = tonumber(y),
+			month = tonumber(mo),
+			day = tonumber(d),
+			hour = tonumber(h),
+			min = tonumber(mi),
+			sec = tonumber(s),
+		})
 	end
 
-	local function generateKey()
-		local expiresAt = os.time() + 86400
-		local expHour = math.floor(expiresAt / 3600)
-		local prefix = ""
-		for i = 1, 5 do
-			local j = math.random(1, #CHARSET)
-			prefix = prefix .. CHARSET:sub(j, j)
+	local function loadPelinda()
+		if Pelinda then
+			return Pelinda
 		end
-		return prefix .. sig2(prefix, expHour), expiresAt
-	end
-
-	local function verifyKey(rawKey)
-		if type(rawKey) ~= "string" then
-			return false, "Введи ключ"
+		if typeof(game.HttpGet) ~= "function" then
+			return nil
 		end
-
-		local key = rawKey:upper():gsub("%s+", "")
-		if #key ~= 7 then
-			return false, "Ключ — 7 символов"
-		end
-
-		local prefix = key:sub(1, 5)
-		local sign = key:sub(6, 7)
-
-		for ch in key:gmatch(".") do
-			if not CHARSET:find(ch, 1, true) then
-				return false, "Недопустимые символы"
-			end
-		end
-
-		local nowH = math.floor(os.time() / 3600)
-		for h = nowH - 72, nowH + 72 do
-			if sig2(prefix, h) == sign then
-				local expiresAt = (h + 1) * 3600
-				if os.time() >= expiresAt then
-					return false, "Ключ истёк"
+		for _, url in ipairs(PANDA_LIB_URLS) do
+			local ok, src = pcall(game.HttpGet, url)
+			if ok and type(src) == "string" and src ~= "" then
+				local chunk = loadstring(src, "@panda-v3")
+				if chunk then
+					local okRun, lib = pcall(chunk)
+					if okRun and type(lib) == "table" then
+						Pelinda = lib
+						return Pelinda
+					end
 				end
-				return true, "OK", expiresAt
 			end
 		end
+		return nil
+	end
 
-		return false, "Неверный ключ"
+	local function readSavedKey()
+		if not canUseConfigFile() or not isfile(SAVE_KEY_PATH) then
+			return nil
+		end
+		local ok, raw = pcall(readfile, SAVE_KEY_PATH)
+		if not ok or type(raw) ~= "string" then
+			return nil
+		end
+		local key = raw:gsub("%s+", "")
+		if key == "" then
+			return nil
+		end
+		return key
+	end
+
+	local function writeSavedKey(key)
+		if not canUseConfigFile() or type(key) ~= "string" or key == "" then
+			return
+		end
+		pcall(writefile, SAVE_KEY_PATH, key)
 	end
 
 	local function readCache()
-		if not canUseConfigFile() or not isfile(CACHE_FILE) then return nil end
+		if not canUseConfigFile() or not isfile(CACHE_FILE) then
+			return nil
+		end
 		local ok, raw = pcall(readfile, CACHE_FILE)
-		if not ok or not raw or raw == "" then return nil end
+		if not ok or not raw or raw == "" then
+			return nil
+		end
 		local ok2, data = pcall(function()
 			return HttpService:JSONDecode(raw)
 		end)
-		if not ok2 or type(data) ~= "table" then return nil end
+		if not ok2 or type(data) ~= "table" then
+			return nil
+		end
 		return data
 	end
 
-	local function writeCache(key, expiresAt)
-		if not canUseConfigFile() or not player then return end
+	local function writeCache(key, expiresAt, isPremium)
+		if not canUseConfigFile() or not player then
+			return
+		end
 		pcall(writefile, CACHE_FILE, HttpService:JSONEncode({
 			key = key,
 			expiresAt = expiresAt,
+			isPremium = isPremium == true,
 			userId = player.UserId,
 			savedAt = os.time(),
+			provider = "panda",
 		}))
+		lastExpiresAt = expiresAt
+		lastIsPremium = isPremium == true
 	end
 
 	local function clearCache()
-		if not canUseConfigFile() then return end
+		if not canUseConfigFile() then
+			return
+		end
 		pcall(writefile, CACHE_FILE, "{}")
+		lastExpiresAt = nil
+		lastIsPremium = false
+	end
+
+	local function capturePandaGlobals()
+		local expiresAt = nil
+		if type(_G.__PELINDA_KEY_EXPIRES_AT__) == "string" then
+			expiresAt = parseIsoExpires(_G.__PELINDA_KEY_EXPIRES_AT__)
+		end
+		local isPremium = _G.__PELINDA_IS_PREMIUM__ == true
+		return expiresAt, isPremium
+	end
+
+	local function validateWithPanda(key, silent)
+		local lib = loadPelinda()
+		if not lib or type(lib.Init) ~= "function" then
+			return false, "Не загрузилась библиотека Panda"
+		end
+		local trimmed = type(key) == "string" and key:gsub("%s+", "") or ""
+		if trimmed == "" then
+			return false, "Введи ключ"
+		end
+		for attempt = 1, MAX_RETRIES do
+			local ok, result = pcall(lib.Init, {
+				Service = PANDA_SERVICE,
+				Key = trimmed,
+				SilentMode = silent == true,
+			})
+			if ok and result == "validated!!" then
+				local expiresAt, isPremium = capturePandaGlobals()
+				writeCache(trimmed, expiresAt, isPremium)
+				writeSavedKey(trimmed)
+				return true, "OK", expiresAt, isPremium
+			elseif ok and result == "error!!" then
+				if attempt < MAX_RETRIES then
+					task.wait(0.4)
+				else
+					return false, "Ошибка сети Panda"
+				end
+			else
+				return false, "Неверный или истёкший ключ"
+			end
+		end
+		return false, "Не удалось проверить ключ"
+	end
+
+	local function verifyKey(rawKey)
+		return validateWithPanda(rawKey, false)
 	end
 
 	local function hasAccess()
 		local cache = readCache()
-		if not cache or not cache.key or not cache.expiresAt then
-			return false
-		end
-		if os.time() >= cache.expiresAt then
+		if cache and cache.expiresAt and os.time() >= cache.expiresAt then
 			clearCache()
-			return false
+			cache = nil
 		end
-		local ok, _, verifyExpires = verifyKey(cache.key)
-		if not ok then
+		if cache and cache.key and cache.provider == "panda" then
+			local ok = validateWithPanda(cache.key, true)
+			if ok then
+				return true
+			end
 			clearCache()
-			return false
 		end
-		if verifyExpires and os.time() >= verifyExpires then
-			clearCache()
-			return false
+		local saved = readSavedKey()
+		if saved then
+			local ok = validateWithPanda(saved, true)
+			if ok then
+				return true
+			end
 		end
-		return true
+		return false
 	end
 
-	local function requestKey()
-		if not WEBHOOK or WEBHOOK == "" then
-			return nil, "Webhook не настроен"
+	local function getKeyLink()
+		local lib = loadPelinda()
+		if lib and type(lib.GetKeyLink) == "function" then
+			local ok, link = pcall(lib.GetKeyLink, { Service = PANDA_SERVICE })
+			if ok and type(link) == "string" and link ~= "" then
+				return link
+			end
 		end
-		if not player then
-			return nil, "Нет player"
-		end
-
-		math.randomseed(os.time() + player.UserId)
-		local key, expiresAt = generateKey()
-
-		local sent = false
-		pcall(function()
-			httpRequest({
-				Url = WEBHOOK,
-				Method = "POST",
-				Headers = { ["Content-Type"] = "application/json" },
-				Body = HttpService:JSONEncode({
-					embeds = {
-						{
-							title = "Запрос ключа",
-							color = 16755200,
-							fields = {
-								{ name = "Ключ", value = key, inline = true },
-								{ name = "Действует до", value = formatTime(expiresAt), inline = true },
-								{ name = "Игрок", value = player.Name, inline = true },
-								{ name = "DisplayName", value = player.DisplayName, inline = true },
-								{ name = "UserId", value = tostring(player.UserId), inline = true },
-								{ name = "JobId", value = game.JobId, inline = false },
-								{ name = "Контакт", value = TELEGRAM, inline = false },
-							},
-							footer = { text = "MAXI HUB · выдай ключ в Telegram" },
-							timestamp = DateTime.now():ToIsoDate(),
-						},
-					},
-				}),
-			})
-			sent = true
-		end)
-
-		if sent then
-			return key, expiresAt
-		end
-		return nil, "Не удалось отправить"
+		return GET_KEY_URL
 	end
 
-	local function logActivation(key, expiresAt)
-		if not WEBHOOK or WEBHOOK == "" then return end
+	local function logActivation(key, expiresAt, isPremium)
+		if not WEBHOOK or WEBHOOK == "" or not player then
+			return
+		end
 		local fields = {
 			{ name = "Ключ", value = key, inline = true },
 			{ name = "Игрок", value = player.Name, inline = true },
 			{ name = "UserId", value = tostring(player.UserId), inline = true },
-			{ name = "До", value = formatTime(expiresAt), inline = false },
+			{ name = "Premium", value = isPremium and "да" or "нет", inline = true },
+			{ name = "До", value = expiresAt and formatTime(expiresAt) or "без срока", inline = false },
+			{ name = "Система", value = "Panda · " .. PANDA_SERVICE, inline = false },
 		}
-		if typeof(getActivationExtraFields) == "function" then
-			for _, field in ipairs(getActivationExtraFields()) do
-				table.insert(fields, field)
-			end
-		end
 		pcall(function()
 			httpRequest({
 				Url = WEBHOOK,
@@ -218,10 +285,10 @@ function MaxiHubKey.create(config)
 				Body = HttpService:JSONEncode({
 					embeds = {
 						{
-							title = "Ключ активирован",
+							title = "Ключ активирован (Panda)",
 							color = 5763719,
 							fields = fields,
-							footer = { text = "MAXI HUB" },
+							footer = { text = "🔰MAXI HUB" },
 							timestamp = DateTime.now():ToIsoDate(),
 						},
 					},
@@ -237,19 +304,29 @@ function MaxiHubKey.create(config)
 		end
 		if playerGui then
 			local old = playerGui:FindFirstChild("MaxiHubKeyGate")
-			if old then old:Destroy() end
+			if old then
+				old:Destroy()
+			end
 		end
 	end
 
 	local function getKeyStatusText()
 		local cache = readCache()
 		if cache and cache.expiresAt and os.time() < cache.expiresAt then
-			return "Ключ: до " .. formatTime(cache.expiresAt)
+			local premium = cache.isPremium and " · Premium" or ""
+			return "Ключ: до " .. formatTime(cache.expiresAt) .. premium
+		end
+		if cache and cache.key and not cache.expiresAt then
+			local premium = cache.isPremium and " · Premium" or ""
+			return "Ключ активен" .. premium
+		end
+		if hasAccess() then
+			return "Ключ активен"
 		end
 		return "Доступ не оплачен"
 	end
 
-	local function showPurchaseNotice(onContinue)
+	local function showAuthGate(onContinue)
 		if hasAccess() then
 			if typeof(onContinue) == "function" then
 				task.defer(onContinue)
@@ -258,22 +335,16 @@ function MaxiHubKey.create(config)
 		end
 
 		if not playerGui then
-			if typeof(onContinue) == "function" then
-				task.defer(onContinue)
-			end
+			warn("[MAXI HUB] Нет PlayerGui для окна ключа")
+			return
+		end
+
+		if not loadPelinda() then
+			warn("[MAXI HUB] Panda library не загрузилась")
 			return
 		end
 
 		destroyGate()
-
-		local KEY_COLORS = {
-			bg = Color3.fromRGB(14, 16, 18),
-			panel = Color3.fromRGB(26, 30, 33),
-			accent = Color3.fromRGB(0, 198, 178),
-			text = Color3.fromRGB(242, 246, 248),
-			muted = Color3.fromRGB(125, 135, 142),
-			warning = Color3.fromRGB(255, 184, 77),
-		}
 
 		keyGateGui = Instance.new("ScreenGui")
 		keyGateGui.Name = "MaxiHubKeyGate"
@@ -283,88 +354,218 @@ function MaxiHubKey.create(config)
 		keyGateGui.IgnoreGuiInset = true
 		keyGateGui.Parent = playerGui
 
-		local root = Instance.new("Frame")
-		root.Size = UDim2.new(0, 360, 0, 200)
-		root.Position = UDim2.new(0.5, -180, 0.5, -100)
-		root.BackgroundColor3 = KEY_COLORS.bg
-		root.BorderSizePixel = 0
-		root.Parent = keyGateGui
+		local overlay = Instance.new("Frame")
+		overlay.Size = UDim2.new(1, 0, 1, 0)
+		overlay.BackgroundColor3 = KEY_COLORS.bg
+		overlay.BackgroundTransparency = 0.15
+		overlay.BorderSizePixel = 0
+		overlay.Parent = keyGateGui
 
-		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0, 12)
-		corner.Parent = root
+		local card = Instance.new("Frame")
+		card.Size = UDim2.new(0, 400, 0, 360)
+		card.Position = UDim2.new(0.5, -200, 0.5, -180)
+		card.BackgroundColor3 = KEY_COLORS.card
+		card.BorderSizePixel = 0
+		card.Parent = overlay
 
-		local stroke = Instance.new("UIStroke")
-		stroke.Color = KEY_COLORS.warning
-		stroke.Thickness = 1.5
-		stroke.Parent = root
+		local cardCorner = Instance.new("UICorner")
+		cardCorner.CornerRadius = UDim.new(0, 14)
+		cardCorner.Parent = card
+
+		local cardStroke = Instance.new("UIStroke")
+		cardStroke.Color = KEY_COLORS.border
+		cardStroke.Thickness = 1
+		cardStroke.Parent = card
+
+		local accent = Instance.new("Frame")
+		accent.Size = UDim2.new(0, 40, 0, 3)
+		accent.Position = UDim2.new(0, 24, 0, 24)
+		accent.BackgroundColor3 = KEY_COLORS.accent
+		accent.BorderSizePixel = 0
+		accent.Parent = card
 
 		local title = Instance.new("TextLabel")
-		title.Size = UDim2.new(1, -24, 0, 28)
-		title.Position = UDim2.new(0, 12, 0, 14)
 		title.BackgroundTransparency = 1
+		title.Position = UDim2.new(0, 24, 0, 36)
+		title.Size = UDim2.new(1, -48, 0, 30)
 		title.Font = Enum.Font.GothamBold
-		title.TextSize = 16
+		title.Text = HUB_NAME
 		title.TextColor3 = KEY_COLORS.text
+		title.TextSize = 22
 		title.TextXAlignment = Enum.TextXAlignment.Left
-		title.Text = "🔰MAXI HUB"
-		title.Parent = root
+		title.Parent = card
 
-		local hint = Instance.new("TextLabel")
-		hint.Size = UDim2.new(1, -24, 0, 72)
-		hint.Position = UDim2.new(0, 12, 0, 44)
-		hint.BackgroundTransparency = 1
-		hint.Font = Enum.Font.Gotham
-		hint.TextSize = 12
-		hint.TextColor3 = KEY_COLORS.warning
-		hint.TextWrapped = true
-		hint.TextXAlignment = Enum.TextXAlignment.Left
-		hint.TextYAlignment = Enum.TextYAlignment.Top
-		hint.Text = PURCHASE_MESSAGE .. "\n" .. TELEGRAM:gsub("https://", "")
-		hint.Parent = root
+		local sub = Instance.new("TextLabel")
+		sub.BackgroundTransparency = 1
+		sub.Position = UDim2.new(0, 24, 0, 68)
+		sub.Size = UDim2.new(1, -48, 0, 18)
+		sub.Font = Enum.Font.Gotham
+		sub.Text = "Введи ключ доступа Panda"
+		sub.TextColor3 = KEY_COLORS.muted
+		sub.TextSize = 12
+		sub.TextXAlignment = Enum.TextXAlignment.Left
+		sub.Parent = card
 
-		local continueBtn = Instance.new("TextButton")
-		continueBtn.Size = UDim2.new(1, -24, 0, 38)
-		continueBtn.Position = UDim2.new(0, 12, 1, -52)
-		continueBtn.BackgroundColor3 = KEY_COLORS.accent
-		continueBtn.BorderSizePixel = 0
-		continueBtn.Font = Enum.Font.GothamBold
-		continueBtn.TextSize = 13
-		continueBtn.TextColor3 = KEY_COLORS.bg
-		continueBtn.Text = "Продолжить"
-		continueBtn.AutoButtonColor = false
-		continueBtn.Parent = root
+		local lbl = Instance.new("TextLabel")
+		lbl.BackgroundTransparency = 1
+		lbl.Position = UDim2.new(0, 24, 0, 112)
+		lbl.Size = UDim2.new(1, -48, 0, 14)
+		lbl.Font = Enum.Font.GothamMedium
+		lbl.Text = "КЛЮЧ ДОСТУПА"
+		lbl.TextColor3 = KEY_COLORS.muted
+		lbl.TextSize = 10
+		lbl.TextXAlignment = Enum.TextXAlignment.Left
+		lbl.Parent = card
 
-		local cornerBtn = Instance.new("UICorner")
-		cornerBtn.CornerRadius = UDim.new(0, 8)
-		cornerBtn.Parent = continueBtn
+		local inputBox = Instance.new("TextBox")
+		inputBox.Position = UDim2.new(0, 24, 0, 132)
+		inputBox.Size = UDim2.new(1, -48, 0, 42)
+		inputBox.BackgroundColor3 = KEY_COLORS.inputBg
+		inputBox.BorderSizePixel = 0
+		inputBox.Font = Enum.Font.Gotham
+		inputBox.PlaceholderText = "Вставь ключ из Panda"
+		inputBox.PlaceholderColor3 = KEY_COLORS.muted
+		inputBox.Text = readSavedKey() or ""
+		inputBox.TextColor3 = KEY_COLORS.text
+		inputBox.TextSize = 14
+		inputBox.ClearTextOnFocus = false
+		inputBox.TextXAlignment = Enum.TextXAlignment.Left
+		inputBox.Parent = card
 
-		local continued = false
-		local function finish()
-			if continued then return end
-			continued = true
-			destroyGate()
-			if typeof(onContinue) == "function" then
-				task.defer(onContinue)
+		local inputCorner = Instance.new("UICorner")
+		inputCorner.CornerRadius = UDim.new(0, 8)
+		inputCorner.Parent = inputBox
+
+		local inputStroke = Instance.new("UIStroke")
+		inputStroke.Color = KEY_COLORS.border
+		inputStroke.Thickness = 1
+		inputStroke.Parent = inputBox
+
+		inputBox.Focused:Connect(function()
+			inputStroke.Color = KEY_COLORS.accent
+		end)
+		inputBox.FocusLost:Connect(function()
+			inputStroke.Color = KEY_COLORS.border
+		end)
+
+		local verifyBtn = Instance.new("TextButton")
+		verifyBtn.Position = UDim2.new(0, 24, 0, 196)
+		verifyBtn.Size = UDim2.new(1, -48, 0, 44)
+		verifyBtn.BackgroundColor3 = KEY_COLORS.accent
+		verifyBtn.BorderSizePixel = 0
+		verifyBtn.Font = Enum.Font.GothamBold
+		verifyBtn.Text = "Продолжить"
+		verifyBtn.TextColor3 = KEY_COLORS.bg
+		verifyBtn.TextSize = 14
+		verifyBtn.AutoButtonColor = false
+		verifyBtn.Parent = card
+
+		local verifyCorner = Instance.new("UICorner")
+		verifyCorner.CornerRadius = UDim.new(0, 8)
+		verifyCorner.Parent = verifyBtn
+
+		local getBtn = Instance.new("TextButton")
+		getBtn.Position = UDim2.new(0, 24, 0, 252)
+		getBtn.Size = UDim2.new(1, -48, 0, 22)
+		getBtn.BackgroundTransparency = 1
+		getBtn.Font = Enum.Font.Gotham
+		getBtn.Text = "Получить ключ →"
+		getBtn.TextColor3 = KEY_COLORS.muted
+		getBtn.TextSize = 12
+		getBtn.AutoButtonColor = false
+		getBtn.TextXAlignment = Enum.TextXAlignment.Left
+		getBtn.Parent = card
+
+		local status = Instance.new("TextLabel")
+		status.BackgroundTransparency = 1
+		status.Position = UDim2.new(0, 24, 1, -42)
+		status.Size = UDim2.new(1, -48, 0, 16)
+		status.Font = Enum.Font.Gotham
+		status.Text = ""
+		status.TextColor3 = KEY_COLORS.muted
+		status.TextSize = 11
+		status.TextXAlignment = Enum.TextXAlignment.Left
+		status.Parent = card
+
+		local foot = Instance.new("TextLabel")
+		foot.BackgroundTransparency = 1
+		foot.Position = UDim2.new(0, 24, 1, -22)
+		foot.Size = UDim2.new(1, -48, 0, 12)
+		foot.Font = Enum.Font.Gotham
+		foot.Text = "Panda Key System · " .. PANDA_SERVICE
+		foot.TextColor3 = Color3.fromRGB(80, 88, 92)
+		foot.TextSize = 9
+		foot.TextXAlignment = Enum.TextXAlignment.Left
+		foot.Parent = card
+
+		local verifying = false
+
+		getBtn.MouseButton1Click:Connect(function()
+			local link = getKeyLink()
+			if not link or link == "" then
+				status.Text = "Ссылка не настроена"
+				status.TextColor3 = KEY_COLORS.error
+				return
 			end
-		end
+			if safeCopy(link) then
+				status.Text = "Ссылка скопирована в буфер"
+				status.TextColor3 = KEY_COLORS.success
+			else
+				status.Text = link:gsub("https://", "")
+				status.TextColor3 = KEY_COLORS.muted
+			end
+		end)
 
-		continueBtn.MouseButton1Click:Connect(finish)
-		task.delay(8, finish)
+		verifyBtn.MouseButton1Click:Connect(function()
+			if verifying then
+				return
+			end
+			local key = inputBox.Text:gsub("%s+", "")
+			if key == "" then
+				status.Text = "Введи ключ"
+				status.TextColor3 = KEY_COLORS.error
+				return
+			end
+			verifying = true
+			verifyBtn.Text = "Проверка..."
+			task.spawn(function()
+				local ok, msg, expiresAt, isPremium = validateWithPanda(key, SILENT_MODE)
+				verifying = false
+				verifyBtn.Text = "Продолжить"
+				if ok then
+					logActivation(key, expiresAt, isPremium)
+					status.Text = "Ключ принят"
+					status.TextColor3 = KEY_COLORS.success
+					task.wait(0.45)
+					destroyGate()
+					if typeof(onContinue) == "function" then
+						onContinue()
+					end
+				else
+					status.Text = msg or "Неверный ключ"
+					status.TextColor3 = KEY_COLORS.error
+				end
+			end)
+		end)
+	end
+
+	local function showPurchaseNotice(onContinue)
+		showAuthGate(onContinue)
 	end
 
 	return {
 		hasAccess = hasAccess,
+		showAuthGate = showAuthGate,
 		showPurchaseNotice = showPurchaseNotice,
 		destroyGate = destroyGate,
 		readCache = readCache,
 		writeCache = writeCache,
 		clearCache = clearCache,
 		verifyKey = verifyKey,
-		generateKey = generateKey,
-		requestKey = requestKey,
+		getKeyLink = getKeyLink,
 		formatTime = formatTime,
 		getKeyStatusText = getKeyStatusText,
+		loadPelinda = loadPelinda,
 	}
 end
 
