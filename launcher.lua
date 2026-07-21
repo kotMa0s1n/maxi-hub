@@ -56,6 +56,21 @@ local function isValidLua(src, label)
 end
 
 local function fetchModule(fileName, localPaths)
+	local genv = getGenv()
+	local repoOnly = genv.MaxiHubRepoOnly == true
+	local bases = { getOfficialRaw(), CDN_RAW }
+	local bust = cacheBust()
+
+	if repoOnly then
+		for _, base in ipairs(bases) do
+			local src = httpGet(base .. fileName .. "?v=" .. bust)
+			if isValidLua(src, "@" .. fileName) then
+				return src
+			end
+		end
+		error("[MAXI HUB] Только официальный репо: " .. fileName)
+	end
+
 	if typeof(readfile) == "function" and typeof(isfile) == "function" then
 		for _, path in ipairs(localPaths) do
 			if isfile(path) then
@@ -67,20 +82,11 @@ local function fetchModule(fileName, localPaths)
 		end
 	end
 
-	local genv = getGenv()
-	local repoOnly = genv.MaxiHubRepoOnly == true
-	local bases = { getOfficialRaw(), CDN_RAW }
-	local bust = cacheBust()
-
 	for _, base in ipairs(bases) do
 		local src = httpGet(base .. fileName .. "?v=" .. bust)
 		if isValidLua(src, "@" .. fileName) then
 			return src
 		end
-	end
-
-	if repoOnly then
-		error("[MAXI HUB] Только официальный репо: " .. fileName)
 	end
 
 	return nil
@@ -245,19 +251,32 @@ local function initAccess()
 		end,
 	})
 	genv.MaxiHubVip = Vip
+	genv._MaxiHubVipOk = false
+	genv._MaxiHubVipUserId = nil
 
 	local vipOk, reason, untilTs = Vip.checkAccess(player)
 	if not vipOk then
-		Vip.showBuy(reason, untilTs)
+		task.defer(function()
+			Vip.showBuy(reason, untilTs)
+		end)
 		return
 	end
 
+	genv._MaxiHubVipOk = true
+	genv._MaxiHubVipUserId = player.UserId
 	startHub()
 end
 
 local ok, err = pcall(initAccess)
 if not ok then
 	warn("[MAXI HUB] Ошибка доступа:", err)
+	local genv = getGenv()
+	local Vip = genv.MaxiHubVip
+	if Vip and typeof(Vip.showBuy) == "function" then
+		task.defer(function()
+			Vip.showBuy("Ошибка VIP: " .. tostring(err))
+		end)
+	end
 end
 
 

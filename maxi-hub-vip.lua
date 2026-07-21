@@ -238,7 +238,7 @@ function MaxiHubVip.create(config)
 			return false, "Файл VIP не найден"
 		end
 		if data.enabled == false then
-			return true, "OK", nil, "vip disabled"
+			return false, "VIP отключён"
 		end
 		if type(data.telegram) == "string" and data.telegram ~= "" then
 			TELEGRAM = data.telegram

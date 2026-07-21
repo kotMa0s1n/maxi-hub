@@ -1,4 +1,4 @@
-local LOADER_VERSION = "2.2"
+local LOADER_VERSION = "2.3"
 
 local BASES = {
 	"https://raw.githubusercontent.com/kotMa0s1n/maxi-hub/master/",
@@ -8,7 +8,6 @@ local BASES = {
 local FILES = {
 	"launcher.lua",
 	"maxi-hub-vip.lua",
-	"maxi-hub-key.lua",
 	"maxi-hub-core.lua",
 	"maxi-hub-ui.lua",
 }
