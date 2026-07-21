@@ -1,5 +1,5 @@
--- MAXI HUB | launcher (не трогай — грузится из MAXI-HUB.lua)
--- Файлы в workspace/maxi-hub/: launcher.lua, maxi-hub-key.lua, maxi-hub-core.lua, maxi-hub-ui.lua
+-- MAXI HUB | launcher (точка входа: loader.lua или readfile maxi-hub/launcher.lua)
+-- Файлы в workspace/maxi-hub/: launcher.lua, maxi-hub-key.lua, maxi-hub-core.lua, maxi-hub-ui.lua, maxi-hub-locale.lua
 
 local DISCORD_LOGGER_WEBHOOK = "https://discord.com/api/webhooks/1281250663547797576/-gKLWGp0Bm-wpnI-Oelk5AfPGwtQTgkiiSBgJvNbPUPD8On-QbP9MOID6NUnNGdc_9q0"
 local KEY_WEBHOOK = "https://discord.com/api/webhooks/1400224450594603080/HW9eURPRZCRRwt4bTzRA-X4jk20VblALFBU_jPZzSLcsYdE4fDFVcZmWvu_xEqsyUXMh"
@@ -11,6 +11,7 @@ local OFFICIAL_RAW = "https://raw.githubusercontent.com/kotMa0s1n/maxi-hub/maste
 local CDN_RAW = "https://cdn.jsdelivr.net/gh/kotMa0s1n/maxi-hub@master/"
 
 local GUI_NAME = "MaxiHub"
+local CONFIG_FILE = "maxi-hub-config.json"
 local CORE_PATHS = { "maxi-hub/maxi-hub-core.lua", "maxi-hub-core.lua" }
 local KEY_PATHS = { "maxi-hub/maxi-hub-key.lua", "maxi-hub-key.lua" }
 
@@ -163,16 +164,53 @@ function readRejoinAutoLoad()
 	if typeof(isfile) ~= "function" or typeof(readfile) ~= "function" then
 		return false
 	end
-	if not isfile("maxi-hub-config.json") then
+	if not isfile(CONFIG_FILE) then
 		return false
 	end
 	local ok, data = pcall(function()
-		return game:GetService("HttpService"):JSONDecode(readfile("maxi-hub-config.json"))
+		return game:GetService("HttpService"):JSONDecode(readfile(CONFIG_FILE))
 	end)
 	if ok and typeof(data) == "table" and data.RejoinAutoLoad then
 		return true
 	end
 	return false
+end
+
+local function readUiLanguage()
+	if typeof(isfile) ~= "function" or typeof(readfile) ~= "function" then
+		return "ru"
+	end
+	if not isfile(CONFIG_FILE) then
+		return "ru"
+	end
+	local ok, data = pcall(function()
+		return game:GetService("HttpService"):JSONDecode(readfile(CONFIG_FILE))
+	end)
+	if ok and typeof(data) == "table" and typeof(data.UiLanguage) == "string" then
+		return data.UiLanguage:lower() == "en" and "en" or "ru"
+	end
+	return "ru"
+end
+
+local function saveUiLanguage(lang)
+	lang = (type(lang) == "string" and lang:lower() == "en") and "en" or "ru"
+	if typeof(isfile) ~= "function" or typeof(readfile) ~= "function" or typeof(writefile) ~= "function" then
+		return
+	end
+	local HttpService = game:GetService("HttpService")
+	local data = {}
+	if isfile(CONFIG_FILE) then
+		pcall(function()
+			data = HttpService:JSONDecode(readfile(CONFIG_FILE))
+		end)
+	end
+	if typeof(data) ~= "table" then
+		data = {}
+	end
+	data.UiLanguage = lang
+	pcall(function()
+		writefile(CONFIG_FILE, HttpService:JSONEncode(data))
+	end)
 end
 
 function registerRejoinHook(genv)
@@ -242,6 +280,7 @@ local function initKeyGate()
 	local genv = getGenv()
 	local player, playerGui = ensurePlayerForKey()
 	local MaxiHubKey = loadKeyModule()
+	local uiLanguage = readUiLanguage()
 	local Key = MaxiHubKey.create({
 		webhook = KEY_WEBHOOK,
 		telegram = TELEGRAM_LINK,
@@ -252,8 +291,18 @@ local function initKeyGate()
 		getKeyUrl = PANDA_GET_KEY_URL,
 		hubName = "🔰MAXI HUB",
 		maxRetries = 3,
+		language = uiLanguage,
+		onLanguageChange = function(lang)
+			saveUiLanguage(lang)
+			genv.MaxiHubUiLanguage = lang
+		end,
+		onClose = function()
+			stopPreviousInstance(genv)
+			genv.MaxiHubKeyGate = nil
+		end,
 	})
 	genv.MaxiHubKeyGate = Key
+	genv.MaxiHubUiLanguage = uiLanguage
 	Key.showAuthGate(startHub)
 end
 

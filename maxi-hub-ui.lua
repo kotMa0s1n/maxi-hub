@@ -701,7 +701,7 @@ function MaxiHubUI.create(config)
 	addCorner(sidebar, 10)
 
 	local sideTop = Instance.new("Frame")
-	sideTop.Size = UDim2.new(1, 0, 1, -92)
+	sideTop.Size = UDim2.new(1, 0, 1, -98)
 	sideTop.BackgroundTransparency = 1
 	sideTop.Parent = sidebar
 
@@ -715,8 +715,8 @@ function MaxiHubUI.create(config)
 	sidePad.Parent = sideTop
 
 	local userCard = Instance.new("Frame")
-	userCard.Size = UDim2.new(1, -12, 0, 80)
-	userCard.Position = UDim2.new(0, 6, 1, -86)
+	userCard.Size = UDim2.new(1, -12, 0, 92)
+	userCard.Position = UDim2.new(0, 6, 1, -98)
 	userCard.BackgroundColor3 = COLORS.card
 	userCard.BorderSizePixel = 0
 	userCard.Parent = sidebar
@@ -737,8 +737,8 @@ function MaxiHubUI.create(config)
 	addCorner(userAvatar, 18)
 
 	local userName = Instance.new("TextLabel")
-	userName.Size = UDim2.new(1, -54, 0, 18)
-	userName.Position = UDim2.new(0, 50, 0, 16)
+	userName.Size = UDim2.new(1, -54, 0, 16)
+	userName.Position = UDim2.new(0, 50, 0, 10)
 	userName.BackgroundTransparency = 1
 	userName.Font = Enum.Font.GothamBold
 	userName.TextSize = 11
@@ -748,9 +748,23 @@ function MaxiHubUI.create(config)
 	userName.Text = player.DisplayName
 	userName.Parent = userCard
 
+	local userKeyCaption = Instance.new("TextLabel")
+	userKeyCaption.Size = UDim2.new(1, -54, 0, 12)
+	userKeyCaption.Position = UDim2.new(0, 50, 0, 28)
+	userKeyCaption.BackgroundTransparency = 1
+	userKeyCaption.Font = Enum.Font.Gotham
+	userKeyCaption.TextSize = 8
+	userKeyCaption.TextColor3 = COLORS.muted
+	userKeyCaption.TextXAlignment = Enum.TextXAlignment.Left
+	userKeyCaption.Text = "Ключ активации"
+	userKeyCaption.Parent = userCard
+	if registerLocale then
+		registerLocale(userKeyCaption, "key_activation_label")
+	end
+
 	local userKey = Instance.new("TextLabel")
-	userKey.Size = UDim2.new(1, -54, 0, 28)
-	userKey.Position = UDim2.new(0, 50, 0, 34)
+	userKey.Size = UDim2.new(1, -54, 0, 24)
+	userKey.Position = UDim2.new(0, 50, 0, 42)
 	userKey.BackgroundTransparency = 1
 	userKey.Font = Enum.Font.Gotham
 	userKey.TextSize = 9
@@ -758,10 +772,16 @@ function MaxiHubUI.create(config)
 	userKey.TextXAlignment = Enum.TextXAlignment.Left
 	userKey.TextYAlignment = Enum.TextYAlignment.Top
 	userKey.TextWrapped = true
+	local function refreshKeyStatus()
+		if typeof(keyStatusText) == "function" then
+			userKey.Text = keyStatusText() or ""
+		end
+	end
 	if typeof(keyStatusText) == "function" then
-		userKey.Text = keyStatusText() or "Доступ не оплачен"
+		refreshKeyStatus()
 	else
 		userKey.Visible = false
+		userKeyCaption.Visible = false
 		userName.Position = UDim2.new(0, 50, 0.5, -9)
 	end
 	userKey.Parent = userCard
@@ -773,9 +793,7 @@ function MaxiHubUI.create(config)
 		if ok and thumb then
 			userAvatar.Image = thumb
 		end
-		if typeof(keyStatusText) == "function" then
-			userKey.Text = keyStatusText() or "Доступ не оплачен"
-		end
+		refreshKeyStatus()
 	end)
 
 	local contentOffset = SIDEBAR_W + 10
@@ -870,6 +888,8 @@ function MaxiHubUI.create(config)
 		pageTitle = pageTitle,
 		pageSubtitle = pageSubtitle,
 		userKey = userKey,
+		userKeyCaption = userKeyCaption,
+		refreshKeyStatus = refreshKeyStatus,
 		addCorner = addCorner,
 		switchTab = switchTab,
 		makeSectionTitle = makeSectionTitle,

@@ -1,4 +1,4 @@
--- MAXI HUB core (auto-loaded by maxi-hub.lua)
+-- MAXI HUB core (auto-loaded by launcher.lua)
 SCRIPT_TITLE = "🔰MAXI HUB"
 GUI_NAME = "MaxiHub"
 TELEGRAM_LINK = "https://t.me/MAXI_HUB"
@@ -630,6 +630,13 @@ function applyMaxiHubLocale()
 		if typeof(ui.setLanguage) == "function" then
 			ui.setLanguage(UiLanguage)
 		end
+		if typeof(ui.refreshKeyStatus) == "function" then
+			ui.refreshKeyStatus()
+		end
+	end
+	local keyGate = genv.MaxiHubKeyGate
+	if keyGate and typeof(keyGate.setLanguage) == "function" then
+		keyGate.setLanguage(UiLanguage)
 	end
 end
 

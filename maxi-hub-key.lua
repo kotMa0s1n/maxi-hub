@@ -58,6 +58,13 @@ function MaxiHubKey.create(config)
 
 	local keyGateGui = nil
 	local Pelinda = nil
+	local currentLanguage = (type(config.language) == "string" and config.language:lower() == "en") and "en" or "ru"
+	local onLanguageChange = config.onLanguageChange
+	local onClose = config.onClose
+	local LocaleLib = nil
+	local localeBindings = {}
+	local verifyBtnRef = nil
+	local verifying = false
 	local KEY_COLORS = {
 		bg = Color3.fromRGB(14, 16, 18),
 		card = Color3.fromRGB(20, 24, 26),
@@ -71,6 +78,149 @@ function MaxiHubKey.create(config)
 		border = Color3.fromRGB(40, 48, 52),
 		inputBg = Color3.fromRGB(14, 16, 18),
 	}
+
+	local function loadLocaleLib()
+		if LocaleLib then
+			return LocaleLib
+		end
+		local paths = { "maxi-hub/maxi-hub-locale.lua", "maxi-hub-locale.lua" }
+		if typeof(readfile) == "function" and typeof(isfile) == "function" then
+			for _, path in ipairs(paths) do
+				if isfile(path) then
+					local chunk = loadstring(readfile(path), "@maxi-hub-locale.lua")
+					if chunk then
+						local ok, lib = pcall(chunk)
+						if ok and type(lib) == "table" then
+							LocaleLib = lib
+							return LocaleLib
+						end
+					end
+				end
+			end
+		end
+		return nil
+	end
+
+	local function t(key)
+		loadLocaleLib()
+		if LocaleLib and typeof(LocaleLib.t) == "function" then
+			return LocaleLib.t(currentLanguage, key)
+		end
+		return key
+	end
+
+	local function registerLocale(element, key)
+		if element and key then
+			table.insert(localeBindings, { element = element, key = key })
+		end
+	end
+
+	local function paintLanguageButtons(langRu, langEn)
+		if not langRu or not langEn then
+			return
+		end
+		local ruActive = currentLanguage == "ru"
+		langRu.BackgroundColor3 = ruActive and KEY_COLORS.accent or KEY_COLORS.panel
+		langRu.TextColor3 = ruActive and KEY_COLORS.bg or KEY_COLORS.text
+		langEn.BackgroundColor3 = (not ruActive) and KEY_COLORS.accent or KEY_COLORS.panel
+		langEn.TextColor3 = (not ruActive) and KEY_COLORS.bg or KEY_COLORS.text
+	end
+
+	local function refreshKeyLocale()
+		for _, item in ipairs(localeBindings) do
+			if item.element and item.element.Parent then
+				item.element.Text = t(item.key)
+			end
+		end
+		if inputBoxRef and inputBoxRef.Parent then
+			inputBoxRef.PlaceholderText = t("key_gate_placeholder")
+		end
+		if verifyBtnRef and verifyBtnRef.Parent and not verifying then
+			verifyBtnRef.Text = t("key_gate_continue")
+		end
+	end
+
+	local function setLanguage(lang, notify)
+		currentLanguage = (type(lang) == "string" and lang:lower() == "en") and "en" or "ru"
+		refreshKeyLocale()
+		if notify and typeof(onLanguageChange) == "function" then
+			onLanguageChange(currentLanguage)
+		end
+	end
+
+	local inputBoxRef = nil
+
+	local function applyKeyLocale()
+		refreshKeyLocale()
+	end
+
+	local function addLanguageButtons(parent)
+		local langRu = Instance.new("TextButton")
+		langRu.Size = UDim2.new(0, 28, 0, 28)
+		langRu.Position = UDim2.new(1, -100, 0, 12)
+		langRu.BackgroundColor3 = KEY_COLORS.panel
+		langRu.BorderSizePixel = 0
+		langRu.Font = Enum.Font.GothamBold
+		langRu.TextSize = 14
+		langRu.Text = "🇷🇺"
+		langRu.AutoButtonColor = false
+		langRu.Parent = parent
+		local langRuCorner = Instance.new("UICorner")
+		langRuCorner.CornerRadius = UDim.new(0, 6)
+		langRuCorner.Parent = langRu
+
+		local langEn = Instance.new("TextButton")
+		langEn.Size = UDim2.new(0, 28, 0, 28)
+		langEn.Position = UDim2.new(1, -68, 0, 12)
+		langEn.BackgroundColor3 = KEY_COLORS.panel
+		langEn.BorderSizePixel = 0
+		langEn.Font = Enum.Font.GothamBold
+		langEn.TextSize = 14
+		langEn.Text = "🇬🇧"
+		langEn.AutoButtonColor = false
+		langEn.Parent = parent
+		local langEnCorner = Instance.new("UICorner")
+		langEnCorner.CornerRadius = UDim.new(0, 6)
+		langEnCorner.Parent = langEn
+
+		paintLanguageButtons(langRu, langEn)
+
+		langRu.MouseButton1Click:Connect(function()
+			if currentLanguage == "ru" then return end
+			setLanguage("ru", true)
+			paintLanguageButtons(langRu, langEn)
+		end)
+
+		langEn.MouseButton1Click:Connect(function()
+			if currentLanguage == "en" then return end
+			setLanguage("en", true)
+			paintLanguageButtons(langRu, langEn)
+		end)
+
+		local closeBtn = Instance.new("TextButton")
+		closeBtn.Size = UDim2.new(0, 28, 0, 28)
+		closeBtn.Position = UDim2.new(1, -36, 0, 12)
+		closeBtn.BackgroundColor3 = KEY_COLORS.panel
+		closeBtn.BorderSizePixel = 0
+		closeBtn.Font = Enum.Font.GothamBold
+		closeBtn.TextSize = 18
+		closeBtn.TextColor3 = KEY_COLORS.text
+		closeBtn.Text = "×"
+		closeBtn.AutoButtonColor = false
+		closeBtn.Parent = parent
+		local closeCorner = Instance.new("UICorner")
+		closeCorner.CornerRadius = UDim.new(0, 6)
+		closeCorner.Parent = closeBtn
+
+		closeBtn.MouseButton1Click:Connect(function()
+			destroyGate()
+			if typeof(onClose) == "function" then
+				onClose()
+			end
+		end)
+
+		return langRu, langEn, closeBtn
+	end
 
 	local function formatTime(ts)
 		if type(ts) ~= "number" then
@@ -214,11 +364,11 @@ function MaxiHubKey.create(config)
 	local function validateWithPanda(key, silent, maxRetries)
 		local lib = loadPelinda()
 		if not lib or type(lib.Init) ~= "function" then
-			return false, "Не загрузилась библиотека Panda"
+			return false, t("key_err_panda_lib")
 		end
 		local trimmed = type(key) == "string" and key:gsub("%s+", "") or ""
 		if trimmed == "" then
-			return false, "Введи ключ"
+			return false, t("key_gate_enter")
 		end
 		local retries = maxRetries
 		if retries == nil then
@@ -239,13 +389,13 @@ function MaxiHubKey.create(config)
 				if attempt < retries then
 					task.wait(0.35)
 				else
-					return false, "Сервис Panda не найден (404). Проверь ID: " .. PANDA_SERVICE
+					return false, t("key_err_panda_404") .. PANDA_SERVICE
 				end
 			else
-				return false, "Неверный или истёкший ключ"
+				return false, t("key_err_invalid_expired")
 			end
 		end
-		return false, "Не удалось проверить ключ"
+		return false, t("key_err_check_failed")
 	end
 
 	local function verifyKey(rawKey)
@@ -310,6 +460,8 @@ function MaxiHubKey.create(config)
 			keyGateGui:Destroy()
 			keyGateGui = nil
 		end
+		inputBoxRef = nil
+		verifyBtnRef = nil
 		if playerGui then
 			local old = playerGui:FindFirstChild("MaxiHubKeyGate")
 			if old then
@@ -321,18 +473,19 @@ function MaxiHubKey.create(config)
 	local function getKeyStatusText()
 		local cache = readCache()
 		if cache and cache.expiresAt and os.time() < cache.expiresAt then
-			local premium = cache.isPremium and " · Premium" or ""
-			return "Ключ: до " .. formatTime(cache.expiresAt) .. premium
+			local premium = cache.isPremium and t("key_premium") or ""
+			return t("key_status_until") .. formatTime(cache.expiresAt) .. premium
 		end
 		if cache and cache.key and not cache.expiresAt then
-			local premium = cache.isPremium and " · Premium" or ""
-			return "Ключ активен" .. premium
+			local premium = cache.isPremium and t("key_premium") or ""
+			return t("key_status_active") .. premium
 		end
-		return "Доступ не оплачен"
+		return t("key_unpaid")
 	end
 
 	local function buildLoadingGate()
 		destroyGate()
+		localeBindings = {}
 		keyGateGui = Instance.new("ScreenGui")
 		keyGateGui.Name = "MaxiHubKeyGate"
 		keyGateGui.ResetOnSpawn = false
@@ -349,8 +502,8 @@ function MaxiHubKey.create(config)
 		overlay.Parent = keyGateGui
 
 		local card = Instance.new("Frame")
-		card.Size = UDim2.new(0, 280, 0, 100)
-		card.Position = UDim2.new(0.5, -140, 0.5, -50)
+		card.Size = UDim2.new(0, 280, 0, 120)
+		card.Position = UDim2.new(0.5, -140, 0.5, -60)
 		card.BackgroundColor3 = KEY_COLORS.card
 		card.BorderSizePixel = 0
 		card.Parent = overlay
@@ -359,19 +512,24 @@ function MaxiHubKey.create(config)
 		cardCorner.CornerRadius = UDim.new(0, 12)
 		cardCorner.Parent = card
 
+		addLanguageButtons(card)
+
 		local label = Instance.new("TextLabel")
-		label.Size = UDim2.new(1, -24, 1, 0)
-		label.Position = UDim2.new(0, 12, 0, 0)
+		label.Size = UDim2.new(1, -24, 0, 20)
+		label.Position = UDim2.new(0, 12, 0, 52)
 		label.BackgroundTransparency = 1
 		label.Font = Enum.Font.Gotham
-		label.Text = "Проверка ключа..."
+		label.Text = t("key_gate_checking")
 		label.TextColor3 = KEY_COLORS.muted
 		label.TextSize = 13
 		label.Parent = card
+		registerLocale(label, "key_gate_checking")
 	end
 
 	local function buildAuthGate(onContinue)
 		destroyGate()
+		localeBindings = {}
+		verifying = false
 
 		keyGateGui = Instance.new("ScreenGui")
 		keyGateGui.Name = "MaxiHubKeyGate"
@@ -404,16 +562,18 @@ function MaxiHubKey.create(config)
 		cardStroke.Thickness = 1
 		cardStroke.Parent = card
 
+		addLanguageButtons(card)
+
 		local accent = Instance.new("Frame")
 		accent.Size = UDim2.new(0, 40, 0, 3)
-		accent.Position = UDim2.new(0, 24, 0, 24)
+		accent.Position = UDim2.new(0, 24, 0, 52)
 		accent.BackgroundColor3 = KEY_COLORS.accent
 		accent.BorderSizePixel = 0
 		accent.Parent = card
 
 		local title = Instance.new("TextLabel")
 		title.BackgroundTransparency = 1
-		title.Position = UDim2.new(0, 24, 0, 36)
+		title.Position = UDim2.new(0, 24, 0, 64)
 		title.Size = UDim2.new(1, -48, 0, 30)
 		title.Font = Enum.Font.GothamBold
 		title.Text = HUB_NAME
@@ -424,33 +584,35 @@ function MaxiHubKey.create(config)
 
 		local sub = Instance.new("TextLabel")
 		sub.BackgroundTransparency = 1
-		sub.Position = UDim2.new(0, 24, 0, 68)
+		sub.Position = UDim2.new(0, 24, 0, 96)
 		sub.Size = UDim2.new(1, -48, 0, 18)
 		sub.Font = Enum.Font.Gotham
-		sub.Text = "Введи ключ"
+		sub.Text = t("key_gate_sub")
 		sub.TextColor3 = KEY_COLORS.muted
 		sub.TextSize = 12
 		sub.TextXAlignment = Enum.TextXAlignment.Left
 		sub.Parent = card
+		registerLocale(sub, "key_gate_sub")
 
 		local lbl = Instance.new("TextLabel")
 		lbl.BackgroundTransparency = 1
-		lbl.Position = UDim2.new(0, 24, 0, 112)
+		lbl.Position = UDim2.new(0, 24, 0, 140)
 		lbl.Size = UDim2.new(1, -48, 0, 14)
 		lbl.Font = Enum.Font.GothamMedium
-		lbl.Text = "КЛЮЧ ДОСТУПА"
+		lbl.Text = t("key_gate_field")
 		lbl.TextColor3 = KEY_COLORS.muted
 		lbl.TextSize = 10
 		lbl.TextXAlignment = Enum.TextXAlignment.Left
 		lbl.Parent = card
+		registerLocale(lbl, "key_gate_field")
 
 		local inputBox = Instance.new("TextBox")
-		inputBox.Position = UDim2.new(0, 24, 0, 132)
+		inputBox.Position = UDim2.new(0, 24, 0, 160)
 		inputBox.Size = UDim2.new(1, -48, 0, 42)
 		inputBox.BackgroundColor3 = KEY_COLORS.inputBg
 		inputBox.BorderSizePixel = 0
 		inputBox.Font = Enum.Font.Gotham
-		inputBox.PlaceholderText = "Вставь ключ"
+		inputBox.PlaceholderText = t("key_gate_placeholder")
 		inputBox.PlaceholderColor3 = KEY_COLORS.muted
 		inputBox.Text = readSavedKey() or ""
 		inputBox.TextColor3 = KEY_COLORS.text
@@ -458,6 +620,7 @@ function MaxiHubKey.create(config)
 		inputBox.ClearTextOnFocus = false
 		inputBox.TextXAlignment = Enum.TextXAlignment.Left
 		inputBox.Parent = card
+		inputBoxRef = inputBox
 
 		local inputCorner = Instance.new("UICorner")
 		inputCorner.CornerRadius = UDim.new(0, 8)
@@ -476,32 +639,34 @@ function MaxiHubKey.create(config)
 		end)
 
 		local verifyBtn = Instance.new("TextButton")
-		verifyBtn.Position = UDim2.new(0, 24, 0, 196)
+		verifyBtn.Position = UDim2.new(0, 24, 0, 224)
 		verifyBtn.Size = UDim2.new(1, -48, 0, 44)
 		verifyBtn.BackgroundColor3 = KEY_COLORS.accent
 		verifyBtn.BorderSizePixel = 0
 		verifyBtn.Font = Enum.Font.GothamBold
-		verifyBtn.Text = "Продолжить"
+		verifyBtn.Text = t("key_gate_continue")
 		verifyBtn.TextColor3 = KEY_COLORS.bg
 		verifyBtn.TextSize = 14
 		verifyBtn.AutoButtonColor = false
 		verifyBtn.Parent = card
+		verifyBtnRef = verifyBtn
 
 		local verifyCorner = Instance.new("UICorner")
 		verifyCorner.CornerRadius = UDim.new(0, 8)
 		verifyCorner.Parent = verifyBtn
 
 		local getBtn = Instance.new("TextButton")
-		getBtn.Position = UDim2.new(0, 24, 0, 252)
+		getBtn.Position = UDim2.new(0, 24, 0, 280)
 		getBtn.Size = UDim2.new(1, -48, 0, 22)
 		getBtn.BackgroundTransparency = 1
 		getBtn.Font = Enum.Font.Gotham
-		getBtn.Text = "Купить ключ →"
+		getBtn.Text = t("key_gate_buy")
 		getBtn.TextColor3 = KEY_COLORS.muted
 		getBtn.TextSize = 12
 		getBtn.AutoButtonColor = false
 		getBtn.TextXAlignment = Enum.TextXAlignment.Left
 		getBtn.Parent = card
+		registerLocale(getBtn, "key_gate_buy")
 
 		local status = Instance.new("TextLabel")
 		status.BackgroundTransparency = 1
@@ -519,23 +684,21 @@ function MaxiHubKey.create(config)
 		foot.Position = UDim2.new(0, 24, 1, -22)
 		foot.Size = UDim2.new(1, -48, 0, 12)
 		foot.Font = Enum.Font.Gotham
-		foot.Text = "Panda Key System · " .. PANDA_SERVICE
+		foot.Text = t("key_gate_foot") .. " · " .. PANDA_SERVICE
 		foot.TextColor3 = Color3.fromRGB(80, 88, 92)
 		foot.TextSize = 9
 		foot.TextXAlignment = Enum.TextXAlignment.Left
 		foot.Parent = card
 
-		local verifying = false
-
 		getBtn.MouseButton1Click:Connect(function()
 			local link = getKeyLink()
 			if not link or link == "" then
-				status.Text = "Ссылка не настроена"
+				status.Text = t("key_gate_link_missing")
 				status.TextColor3 = KEY_COLORS.error
 				return
 			end
 			if safeCopy(link) then
-				status.Text = "Ссылка FunPay скопирована"
+				status.Text = t("key_gate_link_copied")
 				status.TextColor3 = KEY_COLORS.success
 			else
 				status.Text = link:gsub("https://", "")
@@ -549,19 +712,19 @@ function MaxiHubKey.create(config)
 			end
 			local key = inputBox.Text:gsub("%s+", "")
 			if key == "" then
-				status.Text = "Введи ключ"
+				status.Text = t("key_gate_enter")
 				status.TextColor3 = KEY_COLORS.error
 				return
 			end
 			verifying = true
-			verifyBtn.Text = "Проверка..."
+			verifyBtn.Text = t("key_gate_verifying")
 			task.spawn(function()
 				local ok, msg, expiresAt, isPremium = validateWithPanda(key, SILENT_MODE)
 				verifying = false
-				verifyBtn.Text = "Продолжить"
+				verifyBtn.Text = t("key_gate_continue")
 				if ok then
 					logActivation(key, expiresAt, isPremium)
-					status.Text = "Ключ принят"
+					status.Text = t("key_gate_accepted")
 					status.TextColor3 = KEY_COLORS.success
 					task.wait(0.45)
 					destroyGate()
@@ -569,11 +732,13 @@ function MaxiHubKey.create(config)
 						onContinue()
 					end
 				else
-					status.Text = msg or "Неверный ключ"
+					status.Text = msg or t("key_gate_invalid")
 					status.TextColor3 = KEY_COLORS.error
 				end
 			end)
 		end)
+
+		applyKeyLocale()
 	end
 
 	local function showAuthGate(onContinue)
@@ -630,6 +795,10 @@ function MaxiHubKey.create(config)
 		formatTime = formatTime,
 		getKeyStatusText = getKeyStatusText,
 		loadPelinda = loadPelinda,
+		setLanguage = function(lang)
+			setLanguage(lang, false)
+		end,
+		applyLocale = applyKeyLocale,
 	}
 end
 
