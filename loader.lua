@@ -2,6 +2,7 @@ local OFFICIAL_RAW = "https://raw.githubusercontent.com/kotMa0s1n/maxi-hub/maste
 local FILES = {
 	"launcher.lua",
 	"maxi-hub-key.lua",
+	"maxi-hub-whitelist.lua",
 	"maxi-hub-core.lua",
 	"maxi-hub-ui.lua",
 }
@@ -38,6 +39,9 @@ end
 for _, name in ipairs(FILES) do
 	writefile("maxi-hub/" .. name, fetchOfficial(name))
 end
+
+local whitelistJson = fetchOfficial("maxi-hub-whitelist.json")
+writefile("maxi-hub-whitelist.json", whitelistJson)
 
 local launcher = fetchOfficial("launcher.lua")
 local chunk, err = loadstring(launcher, "@launcher.lua")

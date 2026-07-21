@@ -40,6 +40,9 @@ function MaxiHubKey.create(config)
 	local onGranted = config.onGranted
 	local getActivationExtraFields = config.getActivationExtraFields
 
+	local PURCHASE_MESSAGE = config.purchaseMessage
+		or "Доступ не оплачен.\nКупить доступ в Telegram:"
+
 	local keyGateGui = nil
 
 	local function formatTime(ts)
@@ -243,12 +246,21 @@ function MaxiHubKey.create(config)
 		if cache and cache.expiresAt and os.time() < cache.expiresAt then
 			return "Ключ: до " .. formatTime(cache.expiresAt)
 		end
-		return "Ключ: не активирован"
+		return "Доступ не оплачен"
 	end
 
-	local function showGate()
+	local function showPurchaseNotice(onContinue)
+		if hasAccess() then
+			if typeof(onContinue) == "function" then
+				task.defer(onContinue)
+			end
+			return
+		end
+
 		if not playerGui then
-			warn("[MAXI HUB KEY] playerGui не задан")
+			if typeof(onContinue) == "function" then
+				task.defer(onContinue)
+			end
 			return
 		end
 
@@ -260,15 +272,8 @@ function MaxiHubKey.create(config)
 			accent = Color3.fromRGB(0, 198, 178),
 			text = Color3.fromRGB(242, 246, 248),
 			muted = Color3.fromRGB(125, 135, 142),
-			green = Color3.fromRGB(52, 199, 89),
-			red = Color3.fromRGB(220, 75, 75),
+			warning = Color3.fromRGB(255, 184, 77),
 		}
-
-		local function corner(parent, r)
-			local c = Instance.new("UICorner")
-			c.CornerRadius = UDim.new(0, r or 8)
-			c.Parent = parent
-		end
 
 		keyGateGui = Instance.new("ScreenGui")
 		keyGateGui.Name = "MaxiHubKeyGate"
@@ -279,15 +284,18 @@ function MaxiHubKey.create(config)
 		keyGateGui.Parent = playerGui
 
 		local root = Instance.new("Frame")
-		root.Size = UDim2.new(0, 360, 0, 300)
-		root.Position = UDim2.new(0.5, -180, 0.5, -150)
+		root.Size = UDim2.new(0, 360, 0, 200)
+		root.Position = UDim2.new(0.5, -180, 0.5, -100)
 		root.BackgroundColor3 = KEY_COLORS.bg
 		root.BorderSizePixel = 0
 		root.Parent = keyGateGui
-		corner(root, 12)
+
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 12)
+		corner.Parent = root
 
 		local stroke = Instance.new("UIStroke")
-		stroke.Color = KEY_COLORS.accent
+		stroke.Color = KEY_COLORS.warning
 		stroke.Thickness = 1.5
 		stroke.Parent = root
 
@@ -303,169 +311,51 @@ function MaxiHubKey.create(config)
 		title.Parent = root
 
 		local hint = Instance.new("TextLabel")
-		hint.Size = UDim2.new(1, -24, 0, 40)
-		hint.Position = UDim2.new(0, 12, 0, 42)
+		hint.Size = UDim2.new(1, -24, 0, 72)
+		hint.Position = UDim2.new(0, 12, 0, 44)
 		hint.BackgroundTransparency = 1
 		hint.Font = Enum.Font.Gotham
-		hint.TextSize = 11
-		hint.TextColor3 = KEY_COLORS.muted
+		hint.TextSize = 12
+		hint.TextColor3 = KEY_COLORS.warning
 		hint.TextWrapped = true
 		hint.TextXAlignment = Enum.TextXAlignment.Left
-		hint.Text = "Нужен ключ доступа.\nПолучить: Telegram " .. TELEGRAM:gsub("https://", "")
+		hint.TextYAlignment = Enum.TextYAlignment.Top
+		hint.Text = PURCHASE_MESSAGE .. "\n" .. TELEGRAM:gsub("https://", "")
 		hint.Parent = root
 
-		local keyBox = Instance.new("TextBox")
-		keyBox.Size = UDim2.new(1, -24, 0, 38)
-		keyBox.Position = UDim2.new(0, 12, 0, 92)
-		keyBox.BackgroundColor3 = KEY_COLORS.panel
-		keyBox.BorderSizePixel = 0
-		keyBox.ClearTextOnFocus = false
-		keyBox.Font = Enum.Font.GothamBold
-		keyBox.TextSize = 18
-		keyBox.TextColor3 = KEY_COLORS.text
-		keyBox.PlaceholderText = "XXXXXXX"
-		keyBox.PlaceholderColor3 = KEY_COLORS.muted
-		keyBox.Parent = root
-		corner(keyBox, 8)
+		local continueBtn = Instance.new("TextButton")
+		continueBtn.Size = UDim2.new(1, -24, 0, 38)
+		continueBtn.Position = UDim2.new(0, 12, 1, -52)
+		continueBtn.BackgroundColor3 = KEY_COLORS.accent
+		continueBtn.BorderSizePixel = 0
+		continueBtn.Font = Enum.Font.GothamBold
+		continueBtn.TextSize = 13
+		continueBtn.TextColor3 = KEY_COLORS.bg
+		continueBtn.Text = "Продолжить"
+		continueBtn.AutoButtonColor = false
+		continueBtn.Parent = root
 
-		local requestBtn = Instance.new("TextButton")
-		requestBtn.Size = UDim2.new(1, -24, 0, 34)
-		requestBtn.Position = UDim2.new(0, 12, 0, 138)
-		requestBtn.BackgroundColor3 = KEY_COLORS.panel
-		requestBtn.BorderSizePixel = 0
-		requestBtn.Font = Enum.Font.GothamBold
-		requestBtn.TextSize = 12
-		requestBtn.TextColor3 = KEY_COLORS.accent
-		requestBtn.Text = "Запросить ключ"
-		requestBtn.AutoButtonColor = false
-		requestBtn.Parent = root
-		corner(requestBtn, 8)
+		local cornerBtn = Instance.new("UICorner")
+		cornerBtn.CornerRadius = UDim.new(0, 8)
+		cornerBtn.Parent = continueBtn
 
-		local statusLabel = Instance.new("TextLabel")
-		statusLabel.Size = UDim2.new(1, -24, 0, 36)
-		statusLabel.Position = UDim2.new(0, 12, 1, -44)
-		statusLabel.BackgroundTransparency = 1
-		statusLabel.Font = Enum.Font.Gotham
-		statusLabel.TextSize = 11
-		statusLabel.TextColor3 = KEY_COLORS.muted
-		statusLabel.TextWrapped = true
-		statusLabel.TextXAlignment = Enum.TextXAlignment.Left
-		statusLabel.TextYAlignment = Enum.TextYAlignment.Top
-		statusLabel.Text = ""
-		statusLabel.Parent = root
-
-		local activateBtn = Instance.new("TextButton")
-		activateBtn.Size = UDim2.new(1, -24, 0, 38)
-		activateBtn.Position = UDim2.new(0, 12, 0, 182)
-		activateBtn.BackgroundColor3 = KEY_COLORS.accent
-		activateBtn.BorderSizePixel = 0
-		activateBtn.Font = Enum.Font.GothamBold
-		activateBtn.TextSize = 13
-		activateBtn.TextColor3 = KEY_COLORS.bg
-		activateBtn.Text = "Активировать"
-		activateBtn.AutoButtonColor = false
-		activateBtn.Parent = root
-		corner(activateBtn, 8)
-
-		local activating = false
-		local requestBusy = false
-		local requestCooldownLeft = 0
-		local cooldownRunId = 0
-
-		local function updateRequestBtn()
-			if requestCooldownLeft > 0 then
-				requestBtn.Text = string.format("Запросить ключ (%dс)", math.ceil(requestCooldownLeft))
-				requestBtn.TextColor3 = KEY_COLORS.muted
-			else
-				requestBtn.Text = "Запросить ключ"
-				requestBtn.TextColor3 = KEY_COLORS.accent
-			end
-		end
-
-		local function startRequestCooldown()
-			requestCooldownLeft = REQUEST_COOLDOWN
-			updateRequestBtn()
-			cooldownRunId += 1
-			local myRun = cooldownRunId
-			task.spawn(function()
-				while myRun == cooldownRunId and requestCooldownLeft > 0 and keyGateGui and keyGateGui.Parent do
-					task.wait(1)
-					if myRun ~= cooldownRunId then return end
-					requestCooldownLeft -= 1
-					updateRequestBtn()
-				end
-				if myRun == cooldownRunId then
-					requestCooldownLeft = 0
-					updateRequestBtn()
-				end
-			end)
-		end
-
-		requestBtn.MouseButton1Click:Connect(function()
-			if requestBusy or requestCooldownLeft > 0 then return end
-			requestBusy = true
-			statusLabel.Text = "Генерация и отправка..."
-			statusLabel.TextColor3 = KEY_COLORS.muted
-			task.spawn(function()
-				local key, errOrExpires = requestKey()
-				requestBusy = false
-				if not key then
-					statusLabel.Text = errOrExpires or "Не удалось отправить"
-					statusLabel.TextColor3 = KEY_COLORS.red
-					return
-				end
-				statusLabel.Text = "Запрос отправлен. Жди ключ в Telegram."
-				statusLabel.TextColor3 = KEY_COLORS.green
-				startRequestCooldown()
-			end)
-		end)
-
-		local function tryActivate()
-			if activating then return end
-			local key = keyBox.Text
-			if key == "" then
-				statusLabel.Text = "Введи ключ"
-				statusLabel.TextColor3 = KEY_COLORS.red
-				return
-			end
-
-			activating = true
-			statusLabel.Text = "Проверка..."
-			statusLabel.TextColor3 = KEY_COLORS.muted
-
-			local ok, msg, expiresAt = verifyKey(key)
-			if not ok then
-				statusLabel.Text = msg
-				statusLabel.TextColor3 = KEY_COLORS.red
-				activating = false
-				return
-			end
-
-			local normalized = key:upper():gsub("%s+", "")
-			writeCache(normalized, expiresAt)
-			logActivation(normalized, expiresAt)
-			activating = false
+		local continued = false
+		local function finish()
+			if continued then return end
+			continued = true
 			destroyGate()
-
-			if typeof(onGranted) == "function" then
-				task.defer(function()
-					local grantedOk, err = pcall(onGranted)
-					if not grantedOk then
-						warn("[MAXI HUB KEY] onGranted:", err)
-					end
-				end)
+			if typeof(onContinue) == "function" then
+				task.defer(onContinue)
 			end
 		end
 
-		activateBtn.MouseButton1Click:Connect(tryActivate)
-		keyBox.FocusLost:Connect(function(enter)
-			if enter then tryActivate() end
-		end)
+		continueBtn.MouseButton1Click:Connect(finish)
+		task.delay(8, finish)
 	end
 
 	return {
 		hasAccess = hasAccess,
-		showGate = showGate,
+		showPurchaseNotice = showPurchaseNotice,
 		destroyGate = destroyGate,
 		readCache = readCache,
 		writeCache = writeCache,

@@ -10,6 +10,7 @@ local OFFICIAL_RAW = "https://raw.githubusercontent.com/kotMa0s1n/maxi-hub/maste
 local GUI_NAME = "MaxiHub"
 local CORE_PATHS = { "maxi-hub/maxi-hub-core.lua", "maxi-hub-core.lua" }
 local KEY_PATHS = { "maxi-hub/maxi-hub-key.lua", "maxi-hub-key.lua" }
+local WHITELIST_PATHS = { "maxi-hub/maxi-hub-whitelist.lua", "maxi-hub-whitelist.lua" }
 
 local function getGenv()
 	return typeof(getgenv) == "function" and getgenv() or _G
@@ -161,6 +162,22 @@ getGenv().MaxiHubRegisterRejoin = function()
 	registerRejoinHook(getGenv())
 end
 
+local function loadWhitelistModule()
+	local source = fetchModule("maxi-hub-whitelist.lua", WHITELIST_PATHS)
+	if not source or source == "" then
+		error("[MAXI HUB] Не найден maxi-hub-whitelist.lua")
+	end
+	local chunk, cerr = loadstring(source, "@maxi-hub-whitelist.lua")
+	if not chunk then
+		error("[MAXI HUB] compile whitelist: " .. tostring(cerr))
+	end
+	local ok, lib = pcall(chunk)
+	if not ok then
+		error("[MAXI HUB] run whitelist: " .. tostring(lib))
+	end
+	return lib
+end
+
 local function loadKeyModule()
 	local source = fetchModule("maxi-hub-key.lua", KEY_PATHS)
 	if not source or source == "" then
@@ -197,9 +214,27 @@ local function startHub()
 	end
 end
 
-local function initKeyGate()
+local function initAccess()
 	local genv = getGenv()
 	local player, playerGui = ensurePlayerForKey()
+
+	local MaxiHubWhitelist = loadWhitelistModule()
+	local Whitelist = MaxiHubWhitelist.create({
+		player = player,
+		playerGui = playerGui,
+		webhook = KEY_WEBHOOK,
+		getRemoteBase = function()
+			return getOfficialRaw()
+		end,
+	})
+	genv.MaxiHubWhitelist = Whitelist
+
+	local wlOk, reason, untilTs, note = Whitelist.checkAccess(player)
+	if not wlOk then
+		Whitelist.showDeny(reason, untilTs, note)
+		return
+	end
+
 	local MaxiHubKey = loadKeyModule()
 	local Key = MaxiHubKey.create({
 		webhook = KEY_WEBHOOK,
@@ -207,20 +242,15 @@ local function initKeyGate()
 		secret = KEY_SECRET,
 		player = player,
 		playerGui = playerGui,
-		onGranted = startHub,
+		purchaseMessage = "Доступ не оплачен.\nКупить доступ в Telegram:",
 	})
 	genv.MaxiHubKeyGate = Key
-
-	if Key.hasAccess() then
-		startHub()
-	else
-		Key.showGate()
-	end
+	Key.showPurchaseNotice(startHub)
 end
 
-local ok, err = pcall(initKeyGate)
+local ok, err = pcall(initAccess)
 if not ok then
-	warn("[MAXI HUB] Ошибка ключа:", err)
+	warn("[MAXI HUB] Ошибка доступа:", err)
 end
 
 
