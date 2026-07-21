@@ -104,9 +104,9 @@ function MaxiHubAuth.create(config)
 		end
 
 		if data.ok then
-			return true, "OK", data.until, data.note, data.untilText
+			return true, "OK", data["until"], data.note, data.untilText
 		end
-		return false, data.reason or "denied", data.until, data.note, data.untilText
+		return false, data.reason or "denied", data["until"], data.note, data.untilText
 	end
 
 	local function checkAccess(targetPlayer)

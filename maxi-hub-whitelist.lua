@@ -158,7 +158,7 @@ function MaxiHubWhitelist.create(config)
 			return false, "Тебя нет в whitelist"
 		end
 
-		local untilTs = parseUntil(entry.until or entry.untilAt or entry.expiresAt)
+		local untilTs = parseUntil(entry["until"] or entry.untilAt or entry.expiresAt)
 		if not untilTs then
 			return false, "Неверная дата в whitelist"
 		end
