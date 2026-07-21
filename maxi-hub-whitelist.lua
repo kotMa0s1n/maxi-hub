@@ -1,4 +1,4 @@
-﻿--[[ MAXI HUB ┬╖ maxi-hub-whitelist.lua тАФ ╨┐╤А╨╛╨▓╨╡╤А╨║╨░ ╨┤╨╛╤Б╤В╤Г╨┐╨░ ╨┐╨╛ ╤Б╨┐╨╕╤Б╨║╤Г ]]
+﻿--[[ MAXI HUB · maxi-hub-whitelist.lua — проверка доступа по списку ]]
 
 local HttpService = game:GetService("HttpService")
 
@@ -65,7 +65,7 @@ function MaxiHubWhitelist.create(config)
 
 	local DATA_FILE = config.dataFile or "maxi-hub-whitelist.json"
 	local TELEGRAM = config.telegram or "https://t.me/MAXI_HUB"
-	local DENY_MESSAGE = config.denyMessage or "╨Ф╨╛╤Б╤В╤Г╨┐ ╨╖╨░╨║╤А╤Л╤В."
+	local DENY_MESSAGE = config.denyMessage or "Доступ закрыт."
 	local WEBHOOK = config.webhook or ""
 	local player = config.player
 	local playerGui = config.playerGui
@@ -135,12 +135,12 @@ function MaxiHubWhitelist.create(config)
 	local function checkAccess(targetPlayer)
 		targetPlayer = targetPlayer or player
 		if not targetPlayer then
-			return false, "╨Э╨╡╤В player"
+			return false, "Нет player"
 		end
 
 		local data = loadData()
 		if not data then
-			return false, "╨д╨░╨╣╨╗ whitelist ╨╜╨╡ ╨╜╨░╨╣╨┤╨╡╨╜"
+			return false, "Файл whitelist не найден"
 		end
 		if data.enabled == false then
 			return true, "OK", nil, "whitelist disabled"
@@ -155,15 +155,15 @@ function MaxiHubWhitelist.create(config)
 
 		local entry = getUserEntry(data, targetPlayer.UserId)
 		if not entry then
-			return false, "╨в╨╡╨▒╤П ╨╜╨╡╤В ╨▓ whitelist"
+			return false, "Тебя нет в whitelist"
 		end
 
 		local untilTs = parseUntil(entry["until"] or entry.untilAt or entry.expiresAt)
 		if not untilTs then
-			return false, "╨Э╨╡╨▓╨╡╤А╨╜╨░╤П ╨┤╨░╤В╨░ ╨▓ whitelist"
+			return false, "Неверная дата в whitelist"
 		end
 		if os.time() >= untilTs then
-			return false, "╨б╤А╨╛╨║ ╨┤╨╛╤Б╤В╤Г╨┐╨░ ╨╕╤Б╤В╤С╨║", untilTs, entry.note
+			return false, "Срок доступа истёк", untilTs, entry.note
 		end
 
 		return true, "OK", untilTs, entry.note
@@ -181,17 +181,17 @@ function MaxiHubWhitelist.create(config)
 				Body = HttpService:JSONEncode({
 					embeds = {
 						{
-							title = "Whitelist: ╨┤╨╛╤Б╤В╤Г╨┐ ╨╖╨░╨┐╤А╨╡╤Й╤С╨╜",
+							title = "Whitelist: доступ запрещён",
 							color = 15158332,
 							fields = {
-								{ name = "╨Ш╨│╤А╨╛╨║", value = player.Name, inline = true },
+								{ name = "Игрок", value = player.Name, inline = true },
 								{ name = "UserId", value = tostring(player.UserId), inline = true },
-								{ name = "╨Я╤А╨╕╤З╨╕╨╜╨░", value = reason or "?", inline = false },
-								{ name = "╨С╤Л╨╗╨╛ ╨┤╨╛", value = untilTs and formatUntil(untilTs) or "тАФ", inline = true },
-								{ name = "╨Ч╨░╨╝╨╡╤В╨║╨░", value = note or "тАФ", inline = true },
-								{ name = "╨Ъ╨╛╨╜╤В╨░╨║╤В", value = TELEGRAM, inline = false },
+								{ name = "Причина", value = reason or "?", inline = false },
+								{ name = "Было до", value = untilTs and formatUntil(untilTs) or "—", inline = true },
+								{ name = "Заметка", value = note or "—", inline = true },
+								{ name = "Контакт", value = TELEGRAM, inline = false },
 							},
-							footer = { text = "ЁЯФ░MAXI HUB" },
+							footer = { text = "🔰MAXI HUB" },
 						},
 					},
 				}),
@@ -262,7 +262,7 @@ function MaxiHubWhitelist.create(config)
 		title.TextSize = 16
 		title.TextColor3 = COLORS.text
 		title.TextXAlignment = Enum.TextXAlignment.Left
-		title.Text = "ЁЯФ░MAXI HUB"
+		title.Text = "🔰MAXI HUB"
 		title.Parent = root
 
 		local reasonLabel = Instance.new("TextLabel")
@@ -280,7 +280,7 @@ function MaxiHubWhitelist.create(config)
 
 		local details = {}
 		if untilTs then
-			table.insert(details, "╨С╤Л╨╗╨╛ ╨┤╨╛: " .. formatUntil(untilTs))
+			table.insert(details, "Было до: " .. formatUntil(untilTs))
 		end
 		if note and note ~= "" then
 			table.insert(details, note)
@@ -316,12 +316,12 @@ function MaxiHubWhitelist.create(config)
 	local function getStatusText(targetPlayer)
 		local ok, _, untilTs = checkAccess(targetPlayer)
 		if ok and untilTs then
-			return "╨Ф╨╛╤Б╤В╤Г╨┐ ╨┤╨╛ " .. formatUntil(untilTs)
+			return "Доступ до " .. formatUntil(untilTs)
 		end
 		if ok then
-			return "╨Ф╨╛╤Б╤В╤Г╨┐ ╨╛╤В╨║╤А╤Л╤В"
+			return "Доступ открыт"
 		end
-		return "╨Э╨╡╤В ╨┤╨╛╤Б╤В╤Г╨┐╨░"
+		return "Нет доступа"
 	end
 
 	return {
