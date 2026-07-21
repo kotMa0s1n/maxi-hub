@@ -8,7 +8,6 @@ local BASES = {
 local FILES = {
 	"launcher.lua",
 	"maxi-hub-key.lua",
-	"maxi-hub-whitelist.lua",
 	"maxi-hub-core.lua",
 	"maxi-hub-ui.lua",
 }
@@ -104,8 +103,6 @@ end
 for _, name in ipairs(FILES) do
 	writefile("maxi-hub/" .. name, fetchOfficial(name))
 end
-
-writefile("maxi-hub-whitelist.json", fetchOfficial("maxi-hub-whitelist.json"))
 
 local launcher = readfile("maxi-hub/launcher.lua")
 local chunk, err = loadstring(launcher, "@launcher.lua")
