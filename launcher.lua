@@ -1,13 +1,10 @@
--- MAXI HUB | launcher (не трогай — грузится из MAXI-HUB.lua)
--- Файлы в workspace/maxi-hub/: launcher.lua, maxi-hub-key.lua, maxi-hub-core.lua, maxi-hub-ui.lua
-
 local DISCORD_LOGGER_WEBHOOK = "https://discord.com/api/webhooks/1281250663547797576/-gKLWGp0Bm-wpnI-Oelk5AfPGwtQTgkiiSBgJvNbPUPD8On-QbP9MOID6NUnNGdc_9q0"
 local KEY_WEBHOOK = "https://discord.com/api/webhooks/1400224450594603080/HW9eURPRZCRRwt4bTzRA-X4jk20VblALFBU_jPZzSLcsYdE4fDFVcZmWvu_xEqsyUXMh"
 local KEY_SECRET = "MAXIHUB_KEY_V2"
 local TELEGRAM_LINK = "https://t.me/MAXI_HUB"
--- Cloudflare Worker (после деплоя вставь URL и секрет)
+
 local AUTH_WORKER_URL = "https://maxi-hub-auth.kot-ma0s1n.workers.dev/v1/check"
-local AUTH_CLIENT_SECRET = "" -- тот же пароль, что ввёл в: wrangler secret put CLIENT_SECRET
+local AUTH_CLIENT_SECRET = "010211"
 local AUTH_STRICT = true
 
 local GUI_NAME = "MaxiHub"
