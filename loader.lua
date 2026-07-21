@@ -2,13 +2,8 @@ local RAW = "https://raw.githubusercontent.com/kotMa0s1n/maxi-hub/master/"
 local FILES = {
 	"launcher.lua",
 	"maxi-hub-key.lua",
-	"maxi-hub-whitelist.lua",
-	"maxi-hub-auth.lua",
 	"maxi-hub-core.lua",
 	"maxi-hub-ui.lua",
-}
-local DATA_FILES = {
-	"maxi-hub-whitelist.json",
 }
 
 if typeof(game.HttpGet) ~= "function" then
@@ -20,7 +15,6 @@ end
 
 local genv = typeof(getgenv) == "function" and getgenv() or _G
 genv.MaxiHubLoaderUrl = RAW .. "loader.lua"
-genv.MaxiHubRemoteBase = RAW
 
 if typeof(makefolder) == "function" then
 	pcall(makefolder, "maxi-hub")
@@ -35,15 +29,6 @@ for _, name in ipairs(FILES) do
 		error("[MAXI HUB] Не скачался: " .. name)
 	end
 	writefile(path, src)
-end
-
-for _, name in ipairs(DATA_FILES) do
-	local ok, src = pcall(function()
-		return game:HttpGet(RAW .. name)
-	end)
-	if ok and type(src) == "string" and src ~= "" then
-		writefile(name, src)
-	end
 end
 
 local launcher = readfile("maxi-hub/launcher.lua")
