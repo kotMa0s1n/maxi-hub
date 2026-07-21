@@ -3,12 +3,12 @@
 	"telegram": "https://t.me/MAXI_HUB",
 	"buyMessage": "VIP доступ не активирован.\nКупи VIP в Telegram:",
 	"vip": {
-		"muredmiser010321433": {
-			"userId": "7493148563",
+		"muredmiser01032143": {
+			"userId": "749314856",
 			"until": "2026-12-31 23:59",
 			"note": "admin"
 		},
-		"7493148563": {
+		"749314856": {
 			"until": "2026-12-31 23:59"
 		}
 	}
