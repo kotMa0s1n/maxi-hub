@@ -1,4 +1,4 @@
-local RAW = "https://raw.githubusercontent.com/kotMa0s1n/maxi-hub/main/"
+local RAW = "https://raw.githubusercontent.com/kotMa0s1n/maxi-hub/master/"
 local genv = typeof(getgenv) == "function" and getgenv() or _G
 genv.MaxiHubRemoteBase = RAW
 genv.MaxiHubLoaderUrl = RAW .. "loader.lua"
