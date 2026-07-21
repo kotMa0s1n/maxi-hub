@@ -1,4 +1,4 @@
-local LOADER_VERSION = "2.3"
+local LOADER_VERSION = "2.4"
 
 local BASES = {
 	"https://raw.githubusercontent.com/kotMa0s1n/maxi-hub/master/",
@@ -10,6 +10,7 @@ local FILES = {
 	"maxi-hub-key.lua",
 	"maxi-hub-core.lua",
 	"maxi-hub-ui.lua",
+	"maxi-hub-locale.lua",
 }
 
 if typeof(game.HttpGet) ~= "function" then

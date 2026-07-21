@@ -13,6 +13,11 @@ ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 CONFIG_FILE = "maxi-hub-config.json"
 SELL_STATE_FILE = "maxi-hub-sell-state.json"
+UiLanguage = "ru"
+LocaleLib = nil
+localeBindings = {}
+creditsAboutLabel = nil
+creditsTgButton = nil
 KEY_WEBHOOK = "https://discord.com/api/webhooks/1400224450594603080/HW9eURPRZCRRwt4bTzRA-X4jk20VblALFBU_jPZzSLcsYdE4fDFVcZmWvu_xEqsyUXMh"
 DISCORD_CONFIG_FILE = "maxi-hub-discord.json"
 
@@ -216,6 +221,7 @@ function saveConfig()
 		DiscordReportMinutes = DiscordReportMinutes,
 		DiscordLogOnSell = DiscordLogOnSell,
 		DiscordLogOnStop = DiscordLogOnStop,
+		UiLanguage = UiLanguage,
 	}
 	if mainFrameRef then
 		local p = mainFrameRef.Position
@@ -432,6 +438,9 @@ function loadConfig()
 	end
 	if data.DiscordLogOnSell ~= nil then DiscordLogOnSell = data.DiscordLogOnSell end
 	if data.DiscordLogOnStop ~= nil then DiscordLogOnStop = data.DiscordLogOnStop end
+	if typeof(data.UiLanguage) == "string" then
+		UiLanguage = data.UiLanguage:lower() == "en" and "en" or "ru"
+	end
 	if typeof(data.UiYScale) == "number" then
 		savedUiPos = UDim2.new(
 			data.UiXScale or 0,
@@ -475,12 +484,12 @@ end
 
 function getFarmModeText()
 	if cachedTreeCount > 0 then
-		return "деревья"
+		return L("mode_trees")
 	end
 	if cachedStoneCount > 0 then
-		return "камни"
+		return L("mode_stones")
 	end
-	return "поиск"
+	return L("mode_search")
 end
 
 STUCK_F_SECONDS = 4
@@ -523,6 +532,112 @@ PHASE_TEXT = {
 	sell = "продажа",
 	hub = "центр",
 }
+
+function loadLocaleLib()
+	if LocaleLib then
+		return LocaleLib
+	end
+	local paths = { "maxi-hub/maxi-hub-locale.lua", "maxi-hub-locale.lua" }
+	if typeof(readfile) == "function" and typeof(isfile) == "function" then
+		for _, path in ipairs(paths) do
+			if isfile(path) then
+				local chunk = loadstring(readfile(path), "@maxi-hub-locale.lua")
+				if chunk then
+					local ok, lib = pcall(chunk)
+					if ok and type(lib) == "table" then
+						LocaleLib = lib
+						return LocaleLib
+					end
+				end
+			end
+		end
+	end
+	return nil
+end
+
+function L(key)
+	if LocaleLib and typeof(LocaleLib.t) == "function" then
+		return LocaleLib.t(UiLanguage, key)
+	end
+	return key
+end
+
+function registerLocale(element, key)
+	if element and key then
+		table.insert(localeBindings, { element = element, key = key })
+	end
+end
+
+function getTabDefs()
+	return {
+		{ name = L("tab_home"), title = L("tab_home"), subtitle = L("tab_home_sub") },
+		{ name = L("tab_settings"), title = L("tab_settings"), subtitle = L("tab_settings_sub") },
+		{ name = L("tab_discord"), title = L("tab_discord"), subtitle = L("tab_discord_sub") },
+		{ name = L("tab_credits"), title = L("tab_credits"), subtitle = L("tab_credits_sub") },
+	}
+end
+
+function refreshPhaseText()
+	PHASE_TEXT = {
+		idle = L("phase_idle"),
+		search = L("phase_search"),
+		mine = L("phase_mine"),
+		wait = L("phase_wait"),
+		collect = L("phase_collect"),
+		sell = L("phase_sell"),
+		hub = L("phase_hub"),
+	}
+end
+
+function updateDiscordStatusText()
+	if not discordStatus then return end
+	discordStatus.Text = canUseConfigFile() and L("webhook_saved_ok") or L("webhook_saved_bad")
+end
+
+function updateCreditsAboutText(scriptLine)
+	if not creditsAboutLabel then return end
+	creditsAboutLabel.Text = SCRIPT_TITLE .. "\n" .. (scriptLine or L("script_line")) .. "\n" .. L("credits_thanks")
+end
+
+function applyMaxiHubLocale()
+	for _, item in ipairs(localeBindings) do
+		if item.element and item.element.Parent then
+			item.element.Text = L(item.key)
+		end
+	end
+	refreshPhaseText()
+	updateDiscordStatusText()
+	updateCreditsAboutText()
+	if manualSellBtn and manualSellBtn.Text ~= L("btn_selling") then
+		manualSellBtn.Text = L("btn_sell_now")
+	end
+	if creditsTgButton and creditsTgButton.Text ~= L("tg_copied") then
+		creditsTgButton.Text = L("tg_button")
+	end
+	if zonePlaceBtn and zonePlaceBtn.Text ~= L("btn_cube_placed") and zonePlaceBtn.Text ~= L("btn_no_character") then
+		zonePlaceBtn.Text = L("btn_place_cube")
+	end
+	if ui then
+		if typeof(ui.setTitleHint) == "function" then
+			ui.setTitleHint(L("title_hint"))
+		end
+		if typeof(ui.setHideHintText) == "function" then
+			ui.setHideHintText(L("hide_hint"))
+		end
+		if typeof(ui.refreshTabLabels) == "function" then
+			ui.refreshTabLabels(getTabDefs())
+		end
+		if typeof(ui.setLanguage) == "function" then
+			ui.setLanguage(UiLanguage)
+		end
+	end
+end
+
+function setUiLanguage(lang)
+	UiLanguage = (type(lang) == "string" and lang:lower() == "en") and "en" or "ru"
+	applyMaxiHubLocale()
+	scheduleSaveConfig()
+end
 
 function getTeleportSpawnPart()
 	local interactions = workspace:FindFirstChild("Interactions")
@@ -2159,7 +2274,7 @@ UI_LAYOUT = {
 function buildMaxiHubCreditsTab(page, uiKit, opts)
 	opts = opts or {}
 	local telegram = opts.telegram or TELEGRAM_LINK
-	local scriptLine = opts.scriptLine or "Авто-фарм скрипт"
+	local scriptLine = opts.scriptLine or L("script_line")
 
 	local credScroll = uiKit.makeScrollPage(page)
 	local credWrap = uiKit.makeListWrap(credScroll)
@@ -2172,9 +2287,10 @@ function buildMaxiHubCreditsTab(page, uiKit, opts)
 	about.TextSize = 12
 	about.TextColor3 = uiKit.COLORS.text
 	about.TextWrapped = true
-	about.Text = SCRIPT_TITLE .. "\n" .. scriptLine .. "\nСпасибо что пользуешься!"
+	about.Text = SCRIPT_TITLE .. "\n" .. scriptLine .. "\n" .. L("credits_thanks")
 	about.LayoutOrder = 1
 	about.Parent = credWrap
+	creditsAboutLabel = about
 	uiKit.addCorner(about, 8)
 
 	local aboutPad = Instance.new("UIPadding")
@@ -2190,10 +2306,12 @@ function buildMaxiHubCreditsTab(page, uiKit, opts)
 	tgButton.Font = Enum.Font.GothamBold
 	tgButton.TextSize = 13
 	tgButton.TextColor3 = uiKit.COLORS.bg
-	tgButton.Text = "Telegram канал"
+	tgButton.Text = L("tg_button")
 	tgButton.AutoButtonColor = false
 	tgButton.LayoutOrder = 2
 	tgButton.Parent = credWrap
+	creditsTgButton = tgButton
+	registerLocale(tgButton, "tg_button")
 	uiKit.addCorner(tgButton, 8)
 
 	local note = Instance.new("TextLabel")
@@ -2209,10 +2327,10 @@ function buildMaxiHubCreditsTab(page, uiKit, opts)
 
 	tgButton.MouseButton1Click:Connect(function()
 		pcall(function() setclipboard(telegram) end)
-		tgButton.Text = "Скопировано!"
+		tgButton.Text = L("tg_copied")
 		task.delay(1.5, function()
 			if tgButton.Parent then
-				tgButton.Text = "Telegram канал"
+				tgButton.Text = L("tg_button")
 			end
 		end)
 	end)
@@ -2224,16 +2342,10 @@ function bootstrapMaxiHub()
 	if hubBootstrapped then return end
 	hubBootstrapped = true
 	loadConfig()
+	loadLocaleLib()
+	refreshPhaseText()
 
--- ===== СБОРКА ВКЛАДОК (твой контент) =====
--- ▼ Свой контент вкладок — секция «Главная» и ниже в этом файле
-
-tabDefs = {
-	{ name = "Главная", title = "Главная", subtitle = "Управление фармом и статистика сессии" },
-	{ name = "Настройки", title = "Настройки", subtitle = "Добыча, безопасность и авто-продажа" },
-	{ name = "Discord", title = "Discord", subtitle = "Webhook, тайминги и тест отчётов" },
-	{ name = "Кредиты", title = "Кредиты", subtitle = "О скрипте и контакты" },
-}
+tabDefs = getTabDefs()
 
 ui = MaxiHubUILib.create({
 	player = player,
@@ -2243,14 +2355,18 @@ ui = MaxiHubUILib.create({
 	guiName = GUI_NAME,
 	savedPosition = savedUiPos,
 	defaultPosition = DEFAULT_UI_POS,
-	titleHint = "End — фарм · RightCtrl — скрыть",
+	titleHint = L("title_hint"),
+	hideHintText = L("hide_hint"),
+	language = UiLanguage,
+	onLanguageChange = setUiLanguage,
+	registerLocale = registerLocale,
 	tabs = tabDefs,
 	keyStatusText = function()
 		local keyGate = genv.MaxiHubKeyGate
 		if keyGate and typeof(keyGate.getKeyStatusText) == "function" then
-			return keyGate.getKeyStatusText() or "Доступ не оплачен"
+			return keyGate.getKeyStatusText() or L("key_unpaid")
 		end
-		return "Доступ не оплачен"
+		return L("key_unpaid")
 	end,
 	onSavePosition = scheduleSaveConfig,
 	onDestroy = fullUnload,
@@ -2319,46 +2435,46 @@ end
 mainPage = contentPages[1]
 L = UI_LAYOUT
 
-controlsPanel = makeFlowPanel(mainPage, "Управление", L.PANEL_W, 200, 0, 0)
+controlsPanel = makeFlowPanel(mainPage, L("panel_controls"), L.PANEL_W, 200, 0, 0, nil, "panel_controls")
 
-makeFlowToggle(controlsPanel, "Старт при загрузке", AutoStartFarm, function(state)
+makeFlowToggle(controlsPanel, L("toggle_autostart"), AutoStartFarm, function(state)
 	AutoStartFarm = state
 	scheduleSaveConfig()
-end, 1, 0.22)
+end, 1, 0.22, "toggle_autostart")
 
-setFarmToggle = makeFlowToggle(controlsPanel, "Авто фарм", false, function(state)
+setFarmToggle = makeFlowToggle(controlsPanel, L("toggle_autofarm"), false, function(state)
 	if farmToggleSilent then return end
 	setFarmState(state)
-end, 2, 0.5)
+end, 2, 0.5, "toggle_autofarm")
 
-makeFlowToggle(controlsPanel, "Авто при смене сервера", RejoinAutoLoad, function(state)
+makeFlowToggle(controlsPanel, L("toggle_rejoin"), RejoinAutoLoad, function(state)
 	RejoinAutoLoad = state
 	scheduleSaveConfig()
 	if state and typeof(genv.MaxiHubRegisterRejoin) == "function" then
 		pcall(genv.MaxiHubRegisterRejoin)
 	end
-end, 3, 0.78)
+end, 3, 0.78, "toggle_rejoin")
 
-sessionPanel = makeFlowPanel(mainPage, "Сессия", L.PANEL_W, L.PANEL_H, L.PANEL_COL2_X, 0, L.SESSION_BODY_Y)
+sessionPanel = makeFlowPanel(mainPage, L("panel_session"), L.PANEL_W, L.PANEL_H, L.PANEL_COL2_X, 0, L.SESSION_BODY_Y, "panel_session")
 
-sessionStatLabels.phase = makeStatRow(sessionPanel, "Статус", 1)
-sessionStatLabels.trees = makeStatRow(sessionPanel, "Срубил деревьев", 2)
-sessionStatLabels.stones = makeStatRow(sessionPanel, "Срубил камней", 3)
-sessionStatLabels.loot = makeStatRow(sessionPanel, "Лут на земле", 4)
-sessionStatLabels.time = makeStatRow(sessionPanel, "Время фарма", 5)
-sessionStatLabels.mode = makeStatRow(sessionPanel, "Режим", 6)
+sessionStatLabels.phase = makeStatRow(sessionPanel, L("stat_status"), 1, "stat_status")
+sessionStatLabels.trees = makeStatRow(sessionPanel, L("stat_trees"), 2, "stat_trees")
+sessionStatLabels.stones = makeStatRow(sessionPanel, L("stat_stones"), 3, "stat_stones")
+sessionStatLabels.loot = makeStatRow(sessionPanel, L("stat_loot"), 4, "stat_loot")
+sessionStatLabels.time = makeStatRow(sessionPanel, L("stat_time"), 5, "stat_time")
+sessionStatLabels.mode = makeStatRow(sessionPanel, L("stat_mode"), 6, "stat_mode")
 
-slidersPanel = makeFlowPanel(mainPage, "Высота ТП", L.FULL_W, L.SLIDER_PANEL_H, 0, L.ROW3_Y, L.SLIDER_BODY_Y)
+slidersPanel = makeFlowPanel(mainPage, L("panel_tp_height"), L.FULL_W, L.SLIDER_PANEL_H, 0, L.ROW3_Y, L.SLIDER_BODY_Y, "panel_tp_height")
 
-makeSlider(slidersPanel, 0, "Деревья", 0, 12, TeleportHeight, function(v)
+makeSlider(slidersPanel, 0, L("slider_trees"), 0, 12, TeleportHeight, function(v)
 	TeleportHeight = v
 	scheduleSaveConfig()
-end)
+end, "slider_trees")
 
-makeSlider(slidersPanel, L.SLIDER_Y_STEP, "Камни", 0, 12, StoneTeleportHeight, function(v)
+makeSlider(slidersPanel, L.SLIDER_Y_STEP, L("slider_stones"), 0, 12, StoneTeleportHeight, function(v)
 	StoneTeleportHeight = v
 	scheduleSaveConfig()
-end)
+end, "slider_stones")
 
 statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(1, 0, 0, 0)
@@ -2369,7 +2485,7 @@ statusLabel.Parent = mainPage
 setScroll = makeScrollPage(contentPages[2])
 setWrap = makeListWrap(setScroll)
 
-makeSectionTitle(setWrap, "добыча", 1)
+makeSectionTitle(setWrap, L("sec_mining"), 1, "sec_mining")
 
 mineBox = Instance.new("Frame")
 mineBox.Size = UDim2.new(1, 0, 0, L.MINE_BOX_H)
@@ -2377,22 +2493,22 @@ mineBox.BackgroundTransparency = 1
 mineBox.LayoutOrder = 2
 mineBox.Parent = setWrap
 
-makeToggle(mineBox, 0, "Кружение вокруг цели", OrbitEnabled, function(state)
+makeToggle(mineBox, 0, L("toggle_orbit"), OrbitEnabled, function(state)
 	OrbitEnabled = state
 	scheduleSaveConfig()
-end)
+end, nil, "toggle_orbit")
 
-makeToggle(mineBox, L.TOGGLE_Y_STEP, "Атака в цель", AimAtTarget, function(state)
+makeToggle(mineBox, L.TOGGLE_Y_STEP, L("toggle_aim"), AimAtTarget, function(state)
 	AimAtTarget = state
 	scheduleSaveConfig()
-end)
+end, nil, "toggle_aim")
 
-makeToggle(mineBox, L.TOGGLE_Y_STEP * 2, "Клавиша F", UseFKey, function(state)
+makeToggle(mineBox, L.TOGGLE_Y_STEP * 2, L("toggle_fkey"), UseFKey, function(state)
 	UseFKey = state
 	scheduleSaveConfig()
-end)
+end, nil, "toggle_fkey")
 
-makeToggle(mineBox, L.TOGGLE_Y_STEP * 3, "Клик ЛКМ", UseClick, function(state)
+makeToggle(mineBox, L.TOGGLE_Y_STEP * 3, L("toggle_click"), UseClick, function(state)
 	UseClick = state
 	if state then
 		releaseMouseHold()
@@ -2406,17 +2522,17 @@ slidersBox.BackgroundTransparency = 1
 slidersBox.LayoutOrder = 3
 slidersBox.Parent = setWrap
 
-makeSlider(slidersBox, 0, "Скорость круга", 0.3, 3, OrbitSpeed, function(v)
+makeSlider(slidersBox, 0, L("slider_orbit_speed"), 0.3, 3, OrbitSpeed, function(v)
 	OrbitSpeed = v
 	scheduleSaveConfig()
-end)
+end, "slider_orbit_speed")
 
-makeSlider(slidersBox, L.SLIDER_Y_STEP, "Диаметр круга", 4, 30, OrbitDiameter, function(v)
+makeSlider(slidersBox, L.SLIDER_Y_STEP, L("slider_orbit_size"), 4, 30, OrbitDiameter, function(v)
 	OrbitDiameter = v
 	scheduleSaveConfig()
-end)
+end, "slider_orbit_size")
 
-makeSectionTitle(setWrap, "безопасность", 4)
+makeSectionTitle(setWrap, L("sec_safety"), 4, "sec_safety")
 
 safeBox = Instance.new("Frame")
 safeBox.Size = UDim2.new(1, 0, 0, L.SAFE_BOX_H)
@@ -2424,18 +2540,18 @@ safeBox.BackgroundTransparency = 1
 safeBox.LayoutOrder = 5
 safeBox.Parent = setWrap
 
-makeToggle(safeBox, 0, "Блок UI при фарме", BlockUiDuringFarm, function(state)
+makeToggle(safeBox, 0, L("toggle_block_ui"), BlockUiDuringFarm, function(state)
 	BlockUiDuringFarm = state
 	scheduleSaveConfig()
-end)
+end, nil, "toggle_block_ui")
 
-makeToggle(safeBox, L.TOGGLE_Y_STEP, "Блок трейдов", BlockTrades, function(state)
+makeToggle(safeBox, L.TOGGLE_Y_STEP, L("toggle_block_trades"), BlockTrades, function(state)
 	BlockTrades = state
 	if FarmEnabled then
 		scanTrades(playerGui)
 	end
 	scheduleSaveConfig()
-end)
+end, nil, "toggle_block_trades")
 
 blockHint = Instance.new("TextLabel")
 blockHint.Size = UDim2.new(1, 0, 0, 18)
@@ -2444,11 +2560,12 @@ blockHint.Font = Enum.Font.Gotham
 blockHint.TextSize = 10
 blockHint.TextColor3 = COLORS.muted
 blockHint.TextXAlignment = Enum.TextXAlignment.Left
-blockHint.Text = "Скрывает игровые меню при фарме"
+blockHint.Text = L("hint_block_ui")
 blockHint.LayoutOrder = 6
 blockHint.Parent = setWrap
+registerLocale(blockHint, "hint_block_ui")
 
-makeSectionTitle(setWrap, "анти-тп", 7)
+makeSectionTitle(setWrap, L("sec_antitp"), 7, "sec_antitp")
 
 zoneBox = Instance.new("Frame")
 zoneBox.Size = UDim2.new(1, 0, 0, 44)
@@ -2456,11 +2573,11 @@ zoneBox.BackgroundTransparency = 1
 zoneBox.LayoutOrder = 8
 zoneBox.Parent = setWrap
 
-makeToggle(zoneBox, 0, "Анти-ТП зона", BlockedZonesEnabled, function(state)
+makeToggle(zoneBox, 0, L("toggle_antitp"), BlockedZonesEnabled, function(state)
 	BlockedZonesEnabled = state
 	updateBlockedZoneVisual()
 	scheduleSaveConfig()
-end)
+end, nil, "toggle_antitp")
 
 zoneSliderBox = Instance.new("Frame")
 zoneSliderBox.Size = UDim2.new(1, 0, 0, L.SLIDER_Y_STEP)
@@ -2468,11 +2585,11 @@ zoneSliderBox.BackgroundTransparency = 1
 zoneSliderBox.LayoutOrder = 9
 zoneSliderBox.Parent = setWrap
 
-makeSlider(zoneSliderBox, 0, "Размер куба", 20, 120, BlockedZoneSize, function(v)
+makeSlider(zoneSliderBox, 0, L("slider_cube_size"), 20, 120, BlockedZoneSize, function(v)
 	BlockedZoneSize = math.floor(v)
 	updateBlockedZoneVisual()
 	scheduleSaveConfig()
-end)
+end, "slider_cube_size")
 
 zoneBtnRow = Instance.new("Frame")
 zoneBtnRow.Size = UDim2.new(1, 0, 0, 36)
@@ -2487,10 +2604,11 @@ zonePlaceBtn.BorderSizePixel = 0
 zonePlaceBtn.Font = Enum.Font.GothamBold
 zonePlaceBtn.TextSize = 11
 zonePlaceBtn.TextColor3 = COLORS.text
-zonePlaceBtn.Text = "Поставить куб здесь"
+zonePlaceBtn.Text = L("btn_place_cube")
 zonePlaceBtn.AutoButtonColor = false
 zonePlaceBtn.Parent = zoneBtnRow
 addCorner(zonePlaceBtn, 8)
+registerLocale(zonePlaceBtn, "btn_place_cube")
 
 zoneHint = Instance.new("TextLabel")
 zoneHint.Size = UDim2.new(1, 0, 0, 32)
@@ -2500,24 +2618,25 @@ zoneHint.TextSize = 10
 zoneHint.TextColor3 = COLORS.muted
 zoneHint.TextWrapped = true
 zoneHint.TextXAlignment = Enum.TextXAlignment.Left
-zoneHint.Text = "Красный куб — запрет на ТП и фарм (деревья и камни)"
+zoneHint.Text = L("hint_antitp")
 zoneHint.LayoutOrder = 11
 zoneHint.Parent = setWrap
+registerLocale(zoneHint, "hint_antitp")
 
 zonePlaceBtn.MouseButton1Click:Connect(function()
 	if setBlockedZoneAtPlayer() then
-		zonePlaceBtn.Text = "Куб установлен"
+		zonePlaceBtn.Text = L("btn_cube_placed")
 		task.delay(1.2, function()
 			if zonePlaceBtn.Parent then
-				zonePlaceBtn.Text = "Поставить куб здесь"
+				zonePlaceBtn.Text = L("btn_place_cube")
 			end
 		end)
 	else
-		zonePlaceBtn.Text = "Нет персонажа"
+		zonePlaceBtn.Text = L("btn_no_character")
 	end
 end)
 
-makeSectionTitle(setWrap, "центр", 12)
+makeSectionTitle(setWrap, L("sec_hub"), 12, "sec_hub")
 
 hubBox = Instance.new("Frame")
 hubBox.Size = UDim2.new(1, 0, 0, 44)
@@ -2525,10 +2644,10 @@ hubBox.BackgroundTransparency = 1
 hubBox.LayoutOrder = 13
 hubBox.Parent = setWrap
 
-makeToggle(hubBox, 0, "Пауза у спавна", HubWaitEnabled, function(state)
+makeToggle(hubBox, 0, L("toggle_hub_wait"), HubWaitEnabled, function(state)
 	HubWaitEnabled = state
 	scheduleSaveConfig()
-end)
+end, nil, "toggle_hub_wait")
 
 hubHint = Instance.new("TextLabel")
 hubHint.Size = UDim2.new(1, 0, 0, 28)
@@ -2538,11 +2657,12 @@ hubHint.TextSize = 10
 hubHint.TextColor3 = COLORS.muted
 hubHint.TextWrapped = true
 hubHint.TextXAlignment = Enum.TextXAlignment.Left
-hubHint.Text = "Выкл — ТП в центр без ожидания 3–8 сек"
+hubHint.Text = L("hint_hub_wait")
 hubHint.LayoutOrder = 14
 hubHint.Parent = setWrap
+registerLocale(hubHint, "hint_hub_wait")
 
-makeSectionTitle(setWrap, "продажа", 15)
+makeSectionTitle(setWrap, L("sec_sell"), 15, "sec_sell")
 
 sellBox = Instance.new("Frame")
 sellBox.Size = UDim2.new(1, 0, 0, 96)
@@ -2550,15 +2670,15 @@ sellBox.BackgroundTransparency = 1
 sellBox.LayoutOrder = 16
 sellBox.Parent = setWrap
 
-makeToggle(sellBox, 0, "Авто продажа", AutoSellEnabled, function(state)
+makeToggle(sellBox, 0, L("toggle_autosell"), AutoSellEnabled, function(state)
 	AutoSellEnabled = state
 	scheduleSaveConfig()
-end)
+end, nil, "toggle_autosell")
 
-makeSlider(sellBox, L.TOGGLE_Y_STEP, "Проверка (сек)", 20, 120, SellCheckInterval, function(v)
+makeSlider(sellBox, L.TOGGLE_Y_STEP, L("slider_sell_check"), 20, 120, SellCheckInterval, function(v)
 	SellCheckInterval = math.floor(v)
 	scheduleSaveConfig()
-end)
+end, "slider_sell_check")
 
 sellBtnRow = Instance.new("Frame")
 sellBtnRow.Size = UDim2.new(1, 0, 0, 36)
@@ -2573,10 +2693,11 @@ manualSellBtn.BorderSizePixel = 0
 manualSellBtn.Font = Enum.Font.GothamBold
 manualSellBtn.TextSize = 11
 manualSellBtn.TextColor3 = COLORS.bg
-manualSellBtn.Text = "Продать сейчас"
+manualSellBtn.Text = L("btn_sell_now")
 manualSellBtn.AutoButtonColor = false
 manualSellBtn.Parent = sellBtnRow
 addCorner(manualSellBtn, 8)
+registerLocale(manualSellBtn, "btn_sell_now")
 
 sellStatus = Instance.new("TextLabel")
 sellStatus.Size = UDim2.new(1, 0, 0, 16)
@@ -2597,22 +2718,23 @@ sellHint.TextSize = 10
 sellHint.TextColor3 = COLORS.muted
 sellHint.TextWrapped = true
 sellHint.TextXAlignment = Enum.TextXAlignment.Left
-sellHint.Text = "Авто: любой предмет > 8999. При ТП в другой плейс прогресс в maxi-hub-sell-state.json"
+sellHint.Text = L("hint_sell")
 sellHint.LayoutOrder = 19
 sellHint.Parent = setWrap
+registerLocale(sellHint, "hint_sell")
 
 manualSellBtn.MouseButton1Click:Connect(function()
 	if sellInProgress then
-		sellStatus.Text = "Уже идёт продажа"
+		sellStatus.Text = L("sell_busy")
 		sellStatus.TextColor3 = COLORS.red
 		return
 	end
-	manualSellBtn.Text = "Продажа..."
-	sellStatus.Text = "ТП на продажу..."
+	manualSellBtn.Text = L("btn_selling")
+	sellStatus.Text = L("sell_tp")
 	sellStatus.TextColor3 = COLORS.muted
 	runManualSell(function(ok, msg)
-		manualSellBtn.Text = "Продать сейчас"
-		sellStatus.Text = msg or (ok and "Готово" or "Ошибка")
+		manualSellBtn.Text = L("btn_sell_now")
+		sellStatus.Text = msg or (ok and L("sell_done") or L("sell_error"))
 		sellStatus.TextColor3 = ok and COLORS.accent or COLORS.red
 	end)
 end)
@@ -2637,8 +2759,9 @@ webhookTitle.Font = Enum.Font.GothamBold
 webhookTitle.TextSize = 11
 webhookTitle.TextColor3 = COLORS.text
 webhookTitle.TextXAlignment = Enum.TextXAlignment.Left
-webhookTitle.Text = "Webhook URL"
+webhookTitle.Text = L("webhook_title")
 webhookTitle.Parent = webhookBox
+registerLocale(webhookTitle, "webhook_title")
 
 webhookInput = Instance.new("TextBox")
 webhookInput.Size = UDim2.new(1, -20, 0, 30)
@@ -2663,7 +2786,7 @@ discordStatus.Font = Enum.Font.Gotham
 discordStatus.TextSize = 10
 discordStatus.TextColor3 = COLORS.muted
 discordStatus.TextXAlignment = Enum.TextXAlignment.Left
-discordStatus.Text = canUseConfigFile() and "Сохраняется в maxi-hub-config.json" or "Файлы недоступны — webhook до перезапуска"
+discordStatus.Text = canUseConfigFile() and L("webhook_saved_ok") or L("webhook_saved_bad")
 discordStatus.LayoutOrder = 2
 discordStatus.Parent = discordWrap
 
@@ -2687,21 +2810,21 @@ discordPad.PaddingLeft = UDim.new(0, 4)
 discordPad.PaddingRight = UDim.new(0, 4)
 discordPad.Parent = discordOpts
 
-makeFlowToggle(discordOpts, "Отчёты в Discord", DiscordReportsEnabled, function(state)
+makeFlowToggle(discordOpts, L("toggle_discord_reports"), DiscordReportsEnabled, function(state)
 	DiscordReportsEnabled = state
 	FARM_REPORT_INTERVAL = DiscordReportMinutes * 60
 	saveDiscordConfig()
-end, 1)
+end, 1, 0.22, "toggle_discord_reports")
 
-makeFlowToggle(discordOpts, "Лог при остановке", DiscordLogOnStop, function(state)
+makeFlowToggle(discordOpts, L("toggle_discord_stop"), DiscordLogOnStop, function(state)
 	DiscordLogOnStop = state
 	saveDiscordConfig()
-end, 2)
+end, 2, 0.5, "toggle_discord_stop")
 
-makeFlowToggle(discordOpts, "Лог после продажи", DiscordLogOnSell, function(state)
+makeFlowToggle(discordOpts, L("toggle_discord_sell"), DiscordLogOnSell, function(state)
 	DiscordLogOnSell = state
 	saveDiscordConfig()
-end, 3)
+end, 3, 0.78, "toggle_discord_sell")
 
 intervalBox = Instance.new("Frame")
 intervalBox.Size = UDim2.new(1, -8, 0, 52)
@@ -2709,11 +2832,11 @@ intervalBox.BackgroundTransparency = 1
 intervalBox.LayoutOrder = 4
 intervalBox.Parent = discordOpts
 
-makeSlider(intervalBox, 0, "Интервал (мин)", 1, 120, DiscordReportMinutes, function(v)
+makeSlider(intervalBox, 0, L("slider_discord_interval"), 1, 120, DiscordReportMinutes, function(v)
 	DiscordReportMinutes = math.floor(v)
 	FARM_REPORT_INTERVAL = DiscordReportMinutes * 60
 	saveDiscordConfig()
-end)
+end, "slider_discord_interval")
 
 discordBtns = Instance.new("Frame")
 discordBtns.Size = UDim2.new(1, 0, 0, 36)
@@ -2728,10 +2851,11 @@ testBtn.BorderSizePixel = 0
 testBtn.Font = Enum.Font.GothamBold
 testBtn.TextSize = 11
 testBtn.TextColor3 = COLORS.bg
-testBtn.Text = "Тест webhook"
+testBtn.Text = L("btn_test_webhook")
 testBtn.AutoButtonColor = false
 testBtn.Parent = discordBtns
 addCorner(testBtn, 8)
+registerLocale(testBtn, "btn_test_webhook")
 
 saveBtn = Instance.new("TextButton")
 saveBtn.Size = UDim2.new(0.48, 0, 1, 0)
@@ -2741,10 +2865,11 @@ saveBtn.BorderSizePixel = 0
 saveBtn.Font = Enum.Font.GothamBold
 saveBtn.TextSize = 11
 saveBtn.TextColor3 = COLORS.text
-saveBtn.Text = "Сохранить"
+saveBtn.Text = L("btn_save")
 saveBtn.AutoButtonColor = false
 saveBtn.Parent = discordBtns
 addCorner(saveBtn, 8)
+registerLocale(saveBtn, "btn_save")
 
 discordHint = Instance.new("TextLabel")
 discordHint.Size = UDim2.new(1, 0, 0, 48)
@@ -2754,9 +2879,10 @@ discordHint.TextSize = 10
 discordHint.TextColor3 = COLORS.muted
 discordHint.TextWrapped = true
 discordHint.TextXAlignment = Enum.TextXAlignment.Left
-discordHint.Text = "Сюда идут логи фарма: срубил, лут, время, Resources."
+discordHint.Text = L("discord_hint")
 discordHint.LayoutOrder = 6
 discordHint.Parent = discordWrap
+registerLocale(discordHint, "discord_hint")
 
 function applyWebhookFromInput()
 	UserDiscordWebhook = webhookInput.Text:gsub("^%s+", ""):gsub("%s+$", "")
@@ -2769,11 +2895,11 @@ end)
 
 saveBtn.MouseButton1Click:Connect(function()
 	applyWebhookFromInput()
-	discordStatus.Text = "Сохранено"
+	discordStatus.Text = L("discord_saved")
 	discordStatus.TextColor3 = COLORS.accent
 	task.delay(2, function()
 		if discordStatus.Parent then
-			discordStatus.Text = canUseConfigFile() and "Сохраняется в maxi-hub-config.json" or "Файлы недоступны — webhook до перезапуска"
+			updateDiscordStatusText()
 			discordStatus.TextColor3 = COLORS.muted
 		end
 	end)
@@ -2800,7 +2926,7 @@ buildMaxiHubCreditsTab(contentPages[4], {
 	makeScrollPage = makeScrollPage,
 	makeListWrap = makeListWrap,
 	addCorner = addCorner,
-}, { scriptLine = "Авто-фарм скрипт" })
+})
 
 ui.onInputBegan(function(input)
 	if input.KeyCode ~= HOTKEY then return end
@@ -2811,6 +2937,7 @@ ui.onInputBegan(function(input)
 end)
 
 ui.finalize()
+applyMaxiHubLocale()
 
 task.spawn(function()
 	while screenGui.Parent do

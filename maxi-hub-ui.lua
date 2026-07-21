@@ -47,6 +47,11 @@ function MaxiHubUI.create(config)
 	local onCameraStart = config.onCameraStart
 	local keyStatusText = config.keyStatusText
 	local displayOrder = config.displayOrder or 999
+	local currentLanguage = config.language or "ru"
+	local onLanguageChange = config.onLanguageChange
+	local registerLocale = config.registerLocale
+	local hideHintMessage = config.hideHintText or "RightCtrl — open menu"
+	local activeTabId = 1
 
 	local COLORS = config.colors or {
 		bg = Color3.fromRGB(14, 16, 18),
@@ -131,6 +136,7 @@ function MaxiHubUI.create(config)
 	end
 
 	local function switchTab(id)
+		activeTabId = id
 		for i, page in ipairs(contentPages) do
 			page.Visible = i == id
 			tabButtons[i].BackgroundColor3 = i == id and COLORS.accent or COLORS.tabIdle
@@ -144,7 +150,7 @@ function MaxiHubUI.create(config)
 		end
 	end
 
-	local function makeSectionTitle(parent, text, order)
+	local function makeSectionTitle(parent, text, order, localeKey)
 		local row = Instance.new("Frame")
 		row.Size = UDim2.new(1, 0, 0, 20)
 		row.BackgroundTransparency = 1
@@ -169,10 +175,13 @@ function MaxiHubUI.create(config)
 		lbl.TextXAlignment = Enum.TextXAlignment.Left
 		lbl.Text = string.upper(text)
 		lbl.Parent = row
-		return row
+		if registerLocale and localeKey then
+			registerLocale(lbl, localeKey)
+		end
+		return lbl
 	end
 
-	local function makeToggle(parent, y, label, initial, onChange, debounce)
+	local function makeToggle(parent, y, label, initial, onChange, debounce, localeKey)
 		local row = Instance.new("TextButton")
 		row.Size = UDim2.new(1, 0, 0, 38)
 		row.Position = UDim2.new(0, 0, 0, y)
@@ -193,6 +202,9 @@ function MaxiHubUI.create(config)
 		name.TextXAlignment = Enum.TextXAlignment.Left
 		name.Text = label
 		name.Parent = row
+		if registerLocale and localeKey then
+			registerLocale(name, localeKey)
+		end
 
 		local track = Instance.new("Frame")
 		track.Size = UDim2.new(0, 40, 0, 20)
@@ -238,7 +250,7 @@ function MaxiHubUI.create(config)
 		return setState, function() return state end
 	end
 
-	local function makeSlider(parent, y, label, min, max, initial, onChange)
+	local function makeSlider(parent, y, label, min, max, initial, onChange, localeKey)
 		local box = Instance.new("Frame")
 		box.Size = UDim2.new(1, 0, 0, 52)
 		box.Position = UDim2.new(0, 0, 0, y)
@@ -257,6 +269,9 @@ function MaxiHubUI.create(config)
 		name.TextXAlignment = Enum.TextXAlignment.Left
 		name.Text = label
 		name.Parent = box
+		if registerLocale and localeKey then
+			registerLocale(name, localeKey)
+		end
 
 		local valueLbl = Instance.new("TextLabel")
 		valueLbl.Size = UDim2.new(0.35, -12, 0, 20)
@@ -361,7 +376,7 @@ function MaxiHubUI.create(config)
 		return wrap
 	end
 
-	local function makeFlowPanel(parent, title, width, height, posX, posY, bodyOffsetY)
+	local function makeFlowPanel(parent, title, width, height, posX, posY, bodyOffsetY, localeKey)
 		local panel = Instance.new("Frame")
 		panel.Size = UDim2.new(0, width, 0, height)
 		panel.Position = UDim2.new(0, posX or 0, 0, posY or 0)
@@ -386,6 +401,9 @@ function MaxiHubUI.create(config)
 		head.TextXAlignment = Enum.TextXAlignment.Left
 		head.Text = title
 		head.Parent = panel
+		if registerLocale and localeKey then
+			registerLocale(head, localeKey)
+		end
 
 		local bodyY = bodyOffsetY or 36
 		local body = Instance.new("Frame")
@@ -402,7 +420,7 @@ function MaxiHubUI.create(config)
 		return body
 	end
 
-	local function makeStatRow(parent, label, layoutOrder)
+	local function makeStatRow(parent, label, layoutOrder, localeKey)
 		local row = Instance.new("Frame")
 		row.Size = UDim2.new(1, 0, 0, 22)
 		row.BackgroundTransparency = 1
@@ -418,6 +436,9 @@ function MaxiHubUI.create(config)
 		name.TextXAlignment = Enum.TextXAlignment.Left
 		name.Text = label
 		name.Parent = row
+		if registerLocale and localeKey then
+			registerLocale(name, localeKey)
+		end
 
 		local value = Instance.new("TextLabel")
 		value.Size = UDim2.new(0.45, -4, 1, 0)
@@ -433,7 +454,7 @@ function MaxiHubUI.create(config)
 		return value
 	end
 
-	local function makeFlowToggle(parent, label, initial, onChange, layoutOrder, debounce)
+	local function makeFlowToggle(parent, label, initial, onChange, layoutOrder, debounce, localeKey)
 		local row = Instance.new("TextButton")
 		row.Size = UDim2.new(1, 0, 0, 34)
 		row.BackgroundTransparency = 1
@@ -453,6 +474,9 @@ function MaxiHubUI.create(config)
 		name.TextXAlignment = Enum.TextXAlignment.Left
 		name.Text = label
 		name.Parent = row
+		if registerLocale and localeKey then
+			registerLocale(name, localeKey)
+		end
 
 		local track = Instance.new("Frame")
 		track.Size = UDim2.new(0, 44, 0, 22)
@@ -578,7 +602,7 @@ function MaxiHubUI.create(config)
 	titleFix.Parent = titleBar
 
 	title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, -80, 0, 22)
+	title.Size = UDim2.new(1, -140, 0, 22)
 	title.Position = UDim2.new(0, 14, 0, 6)
 	title.BackgroundTransparency = 1
 	title.Font = Enum.Font.GothamBold
@@ -589,7 +613,7 @@ function MaxiHubUI.create(config)
 	title.Parent = titleBar
 
 	titleHint = Instance.new("TextLabel")
-	titleHint.Size = UDim2.new(1, -80, 0, 12)
+	titleHint.Size = UDim2.new(1, -140, 0, 12)
 	titleHint.Position = UDim2.new(0, 14, 1, -14)
 	titleHint.BackgroundTransparency = 1
 	titleHint.Font = Enum.Font.Gotham
@@ -598,6 +622,57 @@ function MaxiHubUI.create(config)
 	titleHint.TextXAlignment = Enum.TextXAlignment.Left
 	titleHint.Text = titleHintText
 	titleHint.Parent = titleBar
+
+	local langRu = Instance.new("TextButton")
+	langRu.Size = UDim2.new(0, 28, 0, 28)
+	langRu.Position = UDim2.new(1, -100, 0.5, -14)
+	langRu.BackgroundColor3 = COLORS.tabIdle
+	langRu.BorderSizePixel = 0
+	langRu.Font = Enum.Font.GothamBold
+	langRu.TextSize = 14
+	langRu.Text = "🇷🇺"
+	langRu.AutoButtonColor = false
+	langRu.Parent = titleBar
+	addCorner(langRu, 6)
+
+	local langEn = Instance.new("TextButton")
+	langEn.Size = UDim2.new(0, 28, 0, 28)
+	langEn.Position = UDim2.new(1, -68, 0.5, -14)
+	langEn.BackgroundColor3 = COLORS.tabIdle
+	langEn.BorderSizePixel = 0
+	langEn.Font = Enum.Font.GothamBold
+	langEn.TextSize = 14
+	langEn.Text = "🇬🇧"
+	langEn.AutoButtonColor = false
+	langEn.Parent = titleBar
+	addCorner(langEn, 6)
+
+	local function paintLanguageButtons()
+		local ruActive = currentLanguage == "ru"
+		langRu.BackgroundColor3 = ruActive and COLORS.accent or COLORS.tabIdle
+		langRu.TextColor3 = ruActive and COLORS.bg or COLORS.text
+		langEn.BackgroundColor3 = (not ruActive) and COLORS.accent or COLORS.tabIdle
+		langEn.TextColor3 = (not ruActive) and COLORS.bg or COLORS.text
+	end
+	paintLanguageButtons()
+
+	langRu.MouseButton1Click:Connect(function()
+		if currentLanguage == "ru" then return end
+		currentLanguage = "ru"
+		paintLanguageButtons()
+		if typeof(onLanguageChange) == "function" then
+			onLanguageChange("ru")
+		end
+	end)
+
+	langEn.MouseButton1Click:Connect(function()
+		if currentLanguage == "en" then return end
+		currentLanguage = "en"
+		paintLanguageButtons()
+		if typeof(onLanguageChange) == "function" then
+			onLanguageChange("en")
+		end
+	end)
 
 	hideBtn = Instance.new("TextButton")
 	hideBtn.Size = UDim2.new(0, 28, 0, 28)
@@ -890,7 +965,7 @@ function MaxiHubUI.create(config)
 		toast.Font = Enum.Font.Gotham
 		toast.TextSize = 11
 		toast.TextColor3 = COLORS.muted
-		toast.Text = "RightCtrl — открыть меню"
+		toast.Text = hideHintMessage
 		toast.TextTransparency = 1
 		toast.ZIndex = 20
 		toast.Parent = screenGui
@@ -930,7 +1005,7 @@ function MaxiHubUI.create(config)
 				titleFix.Visible = false
 				titleBar.Size = UDim2.new(1, 0, 1, 0)
 				titleBar.Position = UDim2.new(0, 0, 0, 0)
-				title.Size = UDim2.new(1, -80, 1, 0)
+				title.Size = UDim2.new(1, -140, 1, 0)
 				title.Position = UDim2.new(0, 14, 0, 0)
 				title.TextYAlignment = Enum.TextYAlignment.Center
 				titleHint.Visible = false
@@ -942,7 +1017,7 @@ function MaxiHubUI.create(config)
 				titleFix.Visible = true
 				titleBar.Size = titleBarExpandedSize
 				titleBar.Position = titleBarExpandedPos
-				title.Size = UDim2.new(1, -80, 0, 22)
+				title.Size = UDim2.new(1, -140, 0, 22)
 				title.Position = UDim2.new(0, 14, 0, 6)
 				title.TextYAlignment = Enum.TextYAlignment.Center
 				titleHint.Visible = true
@@ -978,6 +1053,34 @@ function MaxiHubUI.create(config)
 
 	ui.OnInputBegan = ui.onInputBegan
 	ui.Finalize = ui.finalize
+
+	function ui.setLanguage(lang)
+		currentLanguage = (type(lang) == "string" and lang:lower() == "en") and "en" or "ru"
+		paintLanguageButtons()
+	end
+
+	function ui.setTitleHint(text)
+		if titleHint then
+			titleHint.Text = text or ""
+		end
+	end
+
+	function ui.setHideHintText(text)
+		hideHintMessage = text or hideHintMessage
+	end
+
+	function ui.refreshTabLabels(defs)
+		if type(defs) ~= "table" then return end
+		for i, def in ipairs(defs) do
+			if tabMeta[i] and tabButtons[i] then
+				tabMeta[i].name = def.name or tabMeta[i].name
+				tabMeta[i].title = def.title or def.name or tabMeta[i].title
+				tabMeta[i].subtitle = def.subtitle or ""
+				tabButtons[i].Text = tabMeta[i].name
+			end
+		end
+		switchTab(activeTabId)
+	end
 
 	return ui
 end
