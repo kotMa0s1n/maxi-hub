@@ -270,13 +270,6 @@ function MaxiHubKey.create(config)
 	end
 
 	local function getKeyLink()
-		local lib = loadPelinda()
-		if lib and type(lib.GetKeyLink) == "function" then
-			local ok, link = pcall(lib.GetKeyLink, { Service = PANDA_SERVICE })
-			if ok and type(link) == "string" and link ~= "" then
-				return link
-			end
-		end
 		return GET_KEY_URL
 	end
 
@@ -503,7 +496,7 @@ function MaxiHubKey.create(config)
 		getBtn.Size = UDim2.new(1, -48, 0, 22)
 		getBtn.BackgroundTransparency = 1
 		getBtn.Font = Enum.Font.Gotham
-		getBtn.Text = "Получить ключ →"
+		getBtn.Text = "Купить ключ →"
 		getBtn.TextColor3 = KEY_COLORS.muted
 		getBtn.TextSize = 12
 		getBtn.AutoButtonColor = false
@@ -542,7 +535,7 @@ function MaxiHubKey.create(config)
 				return
 			end
 			if safeCopy(link) then
-				status.Text = "Ссылка скопирована в буфер"
+				status.Text = "Ссылка FunPay скопирована"
 				status.TextColor3 = KEY_COLORS.success
 			else
 				status.Text = link:gsub("https://", "")
