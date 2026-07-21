@@ -1,4 +1,4 @@
-local LOADER_VERSION = "2.1"
+local LOADER_VERSION = "2.2"
 
 local BASES = {
 	"https://raw.githubusercontent.com/kotMa0s1n/maxi-hub/master/",
@@ -50,7 +50,21 @@ local function httpGet(url)
 	return nil
 end
 
+local function stripBom(src)
+	if type(src) ~= "string" or src == "" then
+		return src
+	end
+	if src:sub(1, 1) == "\239" and src:sub(2, 2) == "\187" and src:sub(3, 3) == "\191" then
+		return src:sub(4)
+	end
+	if src:sub(1, 3) == "\239\187\191" then
+		return src:sub(4)
+	end
+	return src
+end
+
 local function isValidDownload(fileName, src)
+	src = stripBom(src)
 	if type(src) ~= "string" or src == "" then
 		return false
 	end
@@ -58,10 +72,10 @@ local function isValidDownload(fileName, src)
 		local ok = pcall(function()
 			HttpService:JSONDecode(src)
 		end)
-		return ok
+		return ok, src
 	end
 	local chunk = loadstring(src, "@" .. fileName)
-	return chunk ~= nil
+	return chunk ~= nil, src
 end
 
 local function fetchOfficial(fileName)
@@ -69,8 +83,9 @@ local function fetchOfficial(fileName)
 	for _, base in ipairs(BASES) do
 		local url = base .. fileName .. "?v=" .. bust
 		local src = httpGet(url)
-		if isValidDownload(fileName, src) then
-			return src
+		local ok, clean = isValidDownload(fileName, src)
+		if ok then
+			return clean
 		end
 	end
 	error("[MAXI HUB] Не скачался: " .. fileName .. " (loader v" .. LOADER_VERSION .. ")")

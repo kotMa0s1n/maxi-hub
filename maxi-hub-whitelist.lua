@@ -1,4 +1,4 @@
-﻿--[[ MAXI HUB · maxi-hub-whitelist.lua — проверка доступа по списку ]]
+--[[ MAXI HUB · maxi-hub-whitelist.lua — проверка доступа по списку ]]
 
 local HttpService = game:GetService("HttpService")
 
