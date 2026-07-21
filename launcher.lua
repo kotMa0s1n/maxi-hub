@@ -5,11 +5,16 @@ local DISCORD_LOGGER_WEBHOOK = "https://discord.com/api/webhooks/128125066354779
 local KEY_WEBHOOK = "https://discord.com/api/webhooks/1400224450594603080/HW9eURPRZCRRwt4bTzRA-X4jk20VblALFBU_jPZzSLcsYdE4fDFVcZmWvu_xEqsyUXMh"
 local KEY_SECRET = "MAXIHUB_KEY_V2"
 local TELEGRAM_LINK = "https://t.me/MAXI_HUB"
+-- Cloudflare Worker (после деплоя вставь URL и секрет)
+local AUTH_WORKER_URL = "https://maxi-hub-auth.kot-ma0s1n.workers.dev/v1/check"
+local AUTH_CLIENT_SECRET = "" -- тот же пароль, что ввёл в: wrangler secret put CLIENT_SECRET
+local AUTH_STRICT = true
 
 local GUI_NAME = "MaxiHub"
 local CORE_PATHS = { "maxi-hub/maxi-hub-core.lua", "maxi-hub-core.lua" }
 local KEY_PATHS = { "maxi-hub/maxi-hub-key.lua", "maxi-hub-key.lua" }
 local WHITELIST_PATHS = { "maxi-hub/maxi-hub-whitelist.lua", "maxi-hub-whitelist.lua" }
+local AUTH_PATHS = { "maxi-hub/maxi-hub-auth.lua", "maxi-hub-auth.lua" }
 
 local function getGenv()
 	return typeof(getgenv) == "function" and getgenv() or _G
@@ -157,6 +162,22 @@ local function loadWhitelistModule()
 	return lib
 end
 
+local function loadAuthModule()
+	local source = fetchModule("maxi-hub-auth.lua", AUTH_PATHS)
+	if not source or source == "" then
+		error("[MAXI HUB] Не найден maxi-hub-auth.lua")
+	end
+	local chunk, cerr = loadstring(source, "@maxi-hub-auth.lua")
+	if not chunk then
+		error("[MAXI HUB] compile auth: " .. tostring(cerr))
+	end
+	local ok, lib = pcall(chunk)
+	if not ok then
+		error("[MAXI HUB] run auth: " .. tostring(lib))
+	end
+	return lib
+end
+
 local function loadKeyModule()
 	local source = fetchModule("maxi-hub-key.lua", KEY_PATHS)
 	if not source or source == "" then
@@ -216,21 +237,46 @@ end
 local function initAccess()
 	local genv = getGenv()
 	local player, playerGui = ensurePlayerForKey()
-	local MaxiHubWhitelist = loadWhitelistModule()
-	local Whitelist = MaxiHubWhitelist.create({
-		player = player,
-		playerGui = playerGui,
-		webhook = KEY_WEBHOOK,
-		getRemoteBase = function()
-			return genv.MaxiHubRemoteBase
-		end,
-	})
-	genv.MaxiHubWhitelist = Whitelist
 
-	local ok, reason, untilTs, note = Whitelist.checkAccess(player)
-	if not ok then
-		Whitelist.showDeny(reason, untilTs, note)
-		return
+	local function runLocalWhitelist()
+		local MaxiHubWhitelist = loadWhitelistModule()
+		local Whitelist = MaxiHubWhitelist.create({
+			player = player,
+			playerGui = playerGui,
+			webhook = KEY_WEBHOOK,
+			getRemoteBase = function()
+				return genv.MaxiHubRemoteBase
+			end,
+		})
+		genv.MaxiHubWhitelist = Whitelist
+		return Whitelist.checkAccess(player)
+	end
+
+	if AUTH_WORKER_URL ~= "" then
+		local MaxiHubAuth = loadAuthModule()
+		local Auth = MaxiHubAuth.create({
+			workerUrl = AUTH_WORKER_URL,
+			clientSecret = AUTH_CLIENT_SECRET,
+			strict = AUTH_STRICT,
+			player = player,
+			playerGui = playerGui,
+			onFallback = function()
+				return runLocalWhitelist()
+			end,
+		})
+		genv.MaxiHubAuth = Auth
+
+		local ok, reason, _, _, untilText = Auth.checkAccess(player)
+		if not ok then
+			Auth.showDeny(reason, untilText)
+			return
+		end
+	else
+		local ok, reason, untilTs, note = runLocalWhitelist()
+		if not ok then
+			genv.MaxiHubWhitelist.showDeny(reason, untilTs, note)
+			return
+		end
 	end
 
 	initKeyGate(player, playerGui)

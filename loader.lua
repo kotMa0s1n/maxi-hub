@@ -3,6 +3,7 @@ local FILES = {
 	"launcher.lua",
 	"maxi-hub-key.lua",
 	"maxi-hub-whitelist.lua",
+	"maxi-hub-auth.lua",
 	"maxi-hub-core.lua",
 	"maxi-hub-ui.lua",
 }
