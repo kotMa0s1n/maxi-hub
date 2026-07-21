@@ -48,6 +48,8 @@ function MaxiHubKey.create(config)
 	local MAX_RETRIES = config.maxRetries or 3
 	local GET_KEY_URL = config.getKeyUrl or config.purchaseUrl or TELEGRAM
 	local SILENT_MODE = config.silentMode == true
+	local CACHE_GRACE_SECONDS = config.cacheGraceSeconds or 3600
+	local SILENT_MAX_RETRIES = config.silentMaxRetries or 1
 
 	local player = config.player
 	local playerGui = config.playerGui
@@ -56,9 +58,6 @@ function MaxiHubKey.create(config)
 
 	local keyGateGui = nil
 	local Pelinda = nil
-	local lastExpiresAt = nil
-	local lastIsPremium = false
-
 	local KEY_COLORS = {
 		bg = Color3.fromRGB(14, 16, 18),
 		card = Color3.fromRGB(20, 24, 26),
@@ -170,10 +169,9 @@ function MaxiHubKey.create(config)
 			isPremium = isPremium == true,
 			userId = player.UserId,
 			savedAt = os.time(),
+			validatedAt = os.time(),
 			provider = "panda",
 		}))
-		lastExpiresAt = expiresAt
-		lastIsPremium = isPremium == true
 	end
 
 	local function clearCache()
@@ -181,8 +179,27 @@ function MaxiHubKey.create(config)
 			return
 		end
 		pcall(writefile, CACHE_FILE, "{}")
-		lastExpiresAt = nil
-		lastIsPremium = false
+	end
+
+	local function isCacheValid(cache)
+		if type(cache) ~= "table" or cache.provider ~= "panda" or not cache.key then
+			return false
+		end
+		if cache.expiresAt and os.time() >= cache.expiresAt then
+			return false
+		end
+		if cache.userId and player and cache.userId ~= player.UserId then
+			return false
+		end
+		return true
+	end
+
+	local function isCacheFresh(cache)
+		if not isCacheValid(cache) then
+			return false
+		end
+		local checkedAt = cache.validatedAt or cache.savedAt or 0
+		return (os.time() - checkedAt) < CACHE_GRACE_SECONDS
 	end
 
 	local function capturePandaGlobals()
@@ -194,7 +211,7 @@ function MaxiHubKey.create(config)
 		return expiresAt, isPremium
 	end
 
-	local function validateWithPanda(key, silent)
+	local function validateWithPanda(key, silent, maxRetries)
 		local lib = loadPelinda()
 		if not lib or type(lib.Init) ~= "function" then
 			return false, "Не загрузилась библиотека Panda"
@@ -203,11 +220,15 @@ function MaxiHubKey.create(config)
 		if trimmed == "" then
 			return false, "Введи ключ"
 		end
-		for attempt = 1, MAX_RETRIES do
+		local retries = maxRetries
+		if retries == nil then
+			retries = silent and SILENT_MAX_RETRIES or MAX_RETRIES
+		end
+		for attempt = 1, retries do
 			local ok, result = pcall(lib.Init, {
 				Service = PANDA_SERVICE,
 				Key = trimmed,
-				SilentMode = silent == true,
+				SilentMode = true,
 			})
 			if ok and result == "validated!!" then
 				local expiresAt, isPremium = capturePandaGlobals()
@@ -215,10 +236,10 @@ function MaxiHubKey.create(config)
 				writeSavedKey(trimmed)
 				return true, "OK", expiresAt, isPremium
 			elseif ok and result == "error!!" then
-				if attempt < MAX_RETRIES then
-					task.wait(0.4)
+				if attempt < retries then
+					task.wait(0.35)
 				else
-					return false, "Ошибка сети Panda"
+					return false, "Сервис Panda не найден (404). Проверь ID: " .. PANDA_SERVICE
 				end
 			else
 				return false, "Неверный или истёкший ключ"
@@ -233,25 +254,19 @@ function MaxiHubKey.create(config)
 
 	local function hasAccess()
 		local cache = readCache()
-		if cache and cache.expiresAt and os.time() >= cache.expiresAt then
-			clearCache()
-			cache = nil
-		end
-		if cache and cache.key and cache.provider == "panda" then
-			local ok = validateWithPanda(cache.key, true)
-			if ok then
-				return true
-			end
-			clearCache()
-		end
-		local saved = readSavedKey()
-		if saved then
-			local ok = validateWithPanda(saved, true)
-			if ok then
-				return true
-			end
+		if isCacheFresh(cache) then
+			return true
 		end
 		return false
+	end
+
+	local function tryValidateKeyAsync(key, onDone)
+		task.spawn(function()
+			local ok, msg, expiresAt, isPremium = validateWithPanda(key, true, SILENT_MAX_RETRIES)
+			if typeof(onDone) == "function" then
+				onDone(ok, msg, expiresAt, isPremium)
+			end
+		end)
 	end
 
 	local function getKeyLink()
@@ -320,30 +335,49 @@ function MaxiHubKey.create(config)
 			local premium = cache.isPremium and " · Premium" or ""
 			return "Ключ активен" .. premium
 		end
-		if hasAccess() then
-			return "Ключ активен"
-		end
 		return "Доступ не оплачен"
 	end
 
-	local function showAuthGate(onContinue)
-		if hasAccess() then
-			if typeof(onContinue) == "function" then
-				task.defer(onContinue)
-			end
-			return
-		end
+	local function buildLoadingGate()
+		destroyGate()
+		keyGateGui = Instance.new("ScreenGui")
+		keyGateGui.Name = "MaxiHubKeyGate"
+		keyGateGui.ResetOnSpawn = false
+		keyGateGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		keyGateGui.DisplayOrder = 1000
+		keyGateGui.IgnoreGuiInset = true
+		keyGateGui.Parent = playerGui
 
-		if not playerGui then
-			warn("[MAXI HUB] Нет PlayerGui для окна ключа")
-			return
-		end
+		local overlay = Instance.new("Frame")
+		overlay.Size = UDim2.new(1, 0, 1, 0)
+		overlay.BackgroundColor3 = KEY_COLORS.bg
+		overlay.BackgroundTransparency = 0.15
+		overlay.BorderSizePixel = 0
+		overlay.Parent = keyGateGui
 
-		if not loadPelinda() then
-			warn("[MAXI HUB] Panda library не загрузилась")
-			return
-		end
+		local card = Instance.new("Frame")
+		card.Size = UDim2.new(0, 280, 0, 100)
+		card.Position = UDim2.new(0.5, -140, 0.5, -50)
+		card.BackgroundColor3 = KEY_COLORS.card
+		card.BorderSizePixel = 0
+		card.Parent = overlay
 
+		local cardCorner = Instance.new("UICorner")
+		cardCorner.CornerRadius = UDim.new(0, 12)
+		cardCorner.Parent = card
+
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(1, -24, 1, 0)
+		label.Position = UDim2.new(0, 12, 0, 0)
+		label.BackgroundTransparency = 1
+		label.Font = Enum.Font.Gotham
+		label.Text = "Проверка ключа..."
+		label.TextColor3 = KEY_COLORS.muted
+		label.TextSize = 13
+		label.Parent = card
+	end
+
+	local function buildAuthGate(onContinue)
 		destroyGate()
 
 		keyGateGui = Instance.new("ScreenGui")
@@ -547,6 +581,43 @@ function MaxiHubKey.create(config)
 				end
 			end)
 		end)
+	end
+
+	local function showAuthGate(onContinue)
+		if not playerGui then
+			warn("[MAXI HUB] Нет PlayerGui для окна ключа")
+			return
+		end
+
+		local cache = readCache()
+		if isCacheFresh(cache) then
+			task.defer(onContinue)
+			tryValidateKeyAsync(cache.key)
+			return
+		end
+
+		if not loadPelinda() then
+			warn("[MAXI HUB] Panda library не загрузилась")
+			return
+		end
+
+		local savedKey = readSavedKey() or (isCacheValid(cache) and cache.key)
+		if savedKey then
+			buildLoadingGate()
+			tryValidateKeyAsync(savedKey, function(ok)
+				if ok then
+					destroyGate()
+					if typeof(onContinue) == "function" then
+						onContinue()
+					end
+				else
+					buildAuthGate(onContinue)
+				end
+			end)
+			return
+		end
+
+		buildAuthGate(onContinue)
 	end
 
 	local function showPurchaseNotice(onContinue)
