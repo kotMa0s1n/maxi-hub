@@ -254,10 +254,10 @@ local function initAccess()
 	genv._MaxiHubVipOk = false
 	genv._MaxiHubVipUserId = nil
 
-	local vipOk, reason, untilTs = Vip.checkAccess(player)
+	local vipOk, reason, untilTs, note, extra = Vip.checkAccess(player)
 	if not vipOk then
 		task.defer(function()
-			Vip.showBuy(reason, untilTs)
+			Vip.showBuy(reason, untilTs, extra)
 		end)
 		return
 	end

@@ -160,13 +160,7 @@ function MaxiHubVip.create(config)
 				end)
 			end
 			if ok and type(raw) == "string" and raw ~= "" then
-				local data = decodeJson(raw)
-				if data then
-					if typeof(writefile) == "function" then
-						pcall(writefile, DATA_FILE, stripBom(raw))
-					end
-					return data
-				end
+				return decodeJson(raw)
 			end
 		end
 		return nil
@@ -199,7 +193,24 @@ function MaxiHubVip.create(config)
 	end
 
 	local function loadData()
-		return mergeData(fetchRemoteData(), readLocalData())
+		local localData = readLocalData()
+		local remoteData = fetchRemoteData()
+		return mergeData(remoteData, localData)
+	end
+
+	local function listVipKeys(data)
+		if type(data) ~= "table" or type(data.vip) ~= "table" then
+			return ""
+		end
+		local keys = {}
+		for key in pairs(data.vip) do
+			table.insert(keys, tostring(key))
+		end
+		table.sort(keys)
+		if #keys == 0 then
+			return "список пуст"
+		end
+		return table.concat(keys, ", ")
 	end
 
 	local function entryMatchesPlayer(entry, key, targetPlayer)
@@ -264,7 +275,7 @@ function MaxiHubVip.create(config)
 			end
 		end
 
-		return false, "Нет VIP доступа"
+		return false, "Нет VIP доступа", nil, nil, listVipKeys(data)
 	end
 
 	local function logDenied(reason, untilTs)
@@ -309,7 +320,7 @@ function MaxiHubVip.create(config)
 		end
 	end
 
-	local function showBuy(reason, untilTs)
+	local function showBuy(reason, untilTs, extraInfo)
 		if not playerGui then
 			warn("[MAXI HUB VIP]", reason)
 			return
@@ -402,6 +413,9 @@ function MaxiHubVip.create(config)
 		}
 		if untilTs then
 			table.insert(details, "Было до: " .. formatUntil(untilTs))
+		end
+		if extraInfo and extraInfo ~= "" then
+			table.insert(details, "VIP в JSON: " .. extraInfo)
 		end
 
 		local hint = Instance.new("TextLabel")
