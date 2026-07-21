@@ -2248,9 +2248,9 @@ ui = MaxiHubUILib.create({
 	keyStatusText = function()
 		local keyGate = genv.MaxiHubKeyGate
 		if keyGate and typeof(keyGate.getKeyStatusText) == "function" then
-			return keyGate.getKeyStatusText()
+			return keyGate.getKeyStatusText() or "Доступ не оплачен"
 		end
-		return nil
+		return "Доступ не оплачен"
 	end,
 	onSavePosition = scheduleSaveConfig,
 	onDestroy = fullUnload,
