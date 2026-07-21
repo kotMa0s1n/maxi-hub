@@ -1,4 +1,4 @@
---[[ MAXI HUB · maxi-hub-whitelist.lua — проверка доступа по списку ]]
+﻿--[[ MAXI HUB · maxi-hub-whitelist.lua — проверка доступа по списку ]]
 
 local HttpService = game:GetService("HttpService")
 
@@ -74,6 +74,30 @@ function MaxiHubWhitelist.create(config)
 
 	local denyGui = nil
 
+	local function stripBom(raw)
+		if type(raw) ~= "string" or raw == "" then
+			return raw
+		end
+		if raw:sub(1, 3) == "\239\187\191" then
+			return raw:sub(4)
+		end
+		return raw
+	end
+
+	local function decodeJson(raw)
+		raw = stripBom(raw)
+		if type(raw) ~= "string" or raw == "" then
+			return nil
+		end
+		local ok, data = pcall(function()
+			return HttpService:JSONDecode(raw)
+		end)
+		if ok and type(data) == "table" then
+			return data
+		end
+		return nil
+	end
+
 	local function readLocalData()
 		if not canUseFiles() or not isfile(DATA_FILE) then
 			return nil
@@ -82,13 +106,7 @@ function MaxiHubWhitelist.create(config)
 		if not ok or not raw or raw == "" then
 			return nil
 		end
-		local ok2, data = pcall(function()
-			return HttpService:JSONDecode(raw)
-		end)
-		if ok2 and type(data) == "table" then
-			return data
-		end
-		return nil
+		return decodeJson(raw)
 	end
 
 	local function fetchRemoteData()
@@ -96,26 +114,64 @@ function MaxiHubWhitelist.create(config)
 		if not base or typeof(game.HttpGet) ~= "function" then
 			return nil
 		end
-		local ok, raw = pcall(function()
-			return game:HttpGet(base .. "maxi-hub-whitelist.json")
-		end)
-		if not ok or type(raw) ~= "string" or raw == "" then
-			return nil
-		end
-		local ok2, data = pcall(function()
-			return HttpService:JSONDecode(raw)
-		end)
-		if ok2 and type(data) == "table" then
-			if typeof(writefile) == "function" then
-				pcall(writefile, DATA_FILE, raw)
+		local bust = tostring(os.time()) .. tostring(math.random(1000, 9999))
+		local urls = {
+			base .. "maxi-hub-whitelist.json?v=" .. bust,
+			"https://cdn.jsdelivr.net/gh/kotMa0s1n/maxi-hub@master/maxi-hub-whitelist.json?v=" .. bust,
+		}
+		for _, url in ipairs(urls) do
+			local ok, raw = pcall(function()
+				return game:HttpGet(url, true)
+			end)
+			if not ok or type(raw) ~= "string" or raw == "" then
+				ok, raw = pcall(function()
+					return game:HttpGet(url)
+				end)
 			end
-			return data
+			if ok and type(raw) == "string" and raw ~= "" then
+				local data = decodeJson(raw)
+				if data then
+					if typeof(writefile) == "function" then
+						pcall(writefile, DATA_FILE, stripBom(raw))
+					end
+					return data
+				end
+			end
 		end
 		return nil
 	end
 
+	local function mergeData(remoteData, localData)
+		if not remoteData then
+			return localData
+		end
+		if not localData then
+			return remoteData
+		end
+
+		local merged = {
+			enabled = localData.enabled ~= nil and localData.enabled or remoteData.enabled,
+			telegram = localData.telegram or remoteData.telegram,
+			denyMessage = localData.denyMessage or remoteData.denyMessage,
+			users = {},
+		}
+
+		if type(remoteData.users) == "table" then
+			for userId, entry in pairs(remoteData.users) do
+				merged.users[tostring(userId)] = entry
+			end
+		end
+		if type(localData.users) == "table" then
+			for userId, entry in pairs(localData.users) do
+				merged.users[tostring(userId)] = entry
+			end
+		end
+
+		return merged
+	end
+
 	local function loadData()
-		return fetchRemoteData() or readLocalData()
+		return mergeData(fetchRemoteData(), readLocalData())
 	end
 
 	local function getUserEntry(data, userId)
@@ -239,8 +295,8 @@ function MaxiHubWhitelist.create(config)
 		denyGui.Parent = playerGui
 
 		local root = Instance.new("Frame")
-		root.Size = UDim2.new(0, 360, 0, 220)
-		root.Position = UDim2.new(0.5, -180, 0.5, -110)
+		root.Size = UDim2.new(0, 360, 0, 248)
+		root.Position = UDim2.new(0.5, -180, 0.5, -124)
 		root.BackgroundColor3 = COLORS.bg
 		root.BorderSizePixel = 0
 		root.Parent = denyGui
@@ -279,6 +335,9 @@ function MaxiHubWhitelist.create(config)
 		reasonLabel.Parent = root
 
 		local details = {}
+		if player then
+			table.insert(details, "Твой UserId: " .. tostring(player.UserId))
+		end
 		if untilTs then
 			table.insert(details, "Было до: " .. formatUntil(untilTs))
 		end
