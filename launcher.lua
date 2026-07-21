@@ -5,6 +5,7 @@ local DISCORD_LOGGER_WEBHOOK = "https://discord.com/api/webhooks/128125066354779
 local KEY_WEBHOOK = "https://discord.com/api/webhooks/1400224450594603080/HW9eURPRZCRRwt4bTzRA-X4jk20VblALFBU_jPZzSLcsYdE4fDFVcZmWvu_xEqsyUXMh"
 local KEY_SECRET = "MAXIHUB_KEY_V2"
 local TELEGRAM_LINK = "https://t.me/MAXI_HUB"
+local OFFICIAL_RAW = "https://raw.githubusercontent.com/kotMa0s1n/maxi-hub/master/"
 
 local GUI_NAME = "MaxiHub"
 local CORE_PATHS = { "maxi-hub/maxi-hub-core.lua", "maxi-hub-core.lua" }
@@ -14,17 +15,35 @@ local function getGenv()
 	return typeof(getgenv) == "function" and getgenv() or _G
 end
 
+local function getOfficialRaw()
+	local genv = getGenv()
+	return genv.MaxiHubOfficialRaw or OFFICIAL_RAW
+end
+
 local function fetchModule(fileName, localPaths)
 	local genv = getGenv()
-	local base = genv.MaxiHubRemoteBase
-	if base and typeof(game.HttpGet) == "function" then
+	local base = getOfficialRaw()
+	local repoOnly = genv.MaxiHubRepoOnly == true
+
+	if typeof(game.HttpGet) == "function" then
 		local ok, src = pcall(function()
 			return game:HttpGet(base .. fileName)
 		end)
 		if ok and type(src) == "string" and src ~= "" then
-			return src
+			if src:find("<!DOCTYPE", 1, true) or src:find("<html", 1, true) then
+				if repoOnly then
+					error("[MAXI HUB] Официальный файл не найден: " .. fileName)
+				end
+			else
+				return src
+			end
 		end
 	end
+
+	if repoOnly then
+		error("[MAXI HUB] Только официальный репо: " .. fileName)
+	end
+
 	if typeof(readfile) == "function" and typeof(isfile) == "function" then
 		for _, path in ipairs(localPaths) do
 			if isfile(path) then
@@ -129,6 +148,8 @@ function registerRejoinHook(genv)
 	local teleportSource
 	if genv.MaxiHubLoaderUrl and genv.MaxiHubLoaderUrl ~= "" then
 		teleportSource = 'loadstring(game:HttpGet("' .. genv.MaxiHubLoaderUrl .. '"))()'
+	elseif genv.MaxiHubOfficialRaw then
+		teleportSource = 'loadstring(game:HttpGet("' .. genv.MaxiHubOfficialRaw .. 'loader.lua"))()'
 	else
 		teleportSource = 'loadstring(readfile("maxi-hub/launcher.lua"))()'
 	end

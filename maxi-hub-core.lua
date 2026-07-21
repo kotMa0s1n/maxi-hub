@@ -2096,16 +2096,21 @@ do
 	local genvUi = typeof(getgenv) == "function" and getgenv() or _G
 	if not genvUi._MaxiHubUILibrary then
 		local source
-		local base = genvUi.MaxiHubRemoteBase
+		local base = genvUi.MaxiHubOfficialRaw or genvUi.MaxiHubRemoteBase
+		local repoOnly = genvUi.MaxiHubRepoOnly == true
 		if base and typeof(game.HttpGet) == "function" then
 			local ok, remote = pcall(function()
 				return game:HttpGet(base .. "maxi-hub-ui.lua")
 			end)
 			if ok and type(remote) == "string" and remote ~= "" then
-				source = remote
+				if not remote:find("<!DOCTYPE", 1, true) and not remote:find("<html", 1, true) then
+					source = remote
+				elseif repoOnly then
+					error("[MAXI HUB] UI только с официального репо")
+				end
 			end
 		end
-		if not source and typeof(readfile) == "function" and typeof(isfile) == "function" then
+		if not source and not repoOnly and typeof(readfile) == "function" and typeof(isfile) == "function" then
 			for _, p in ipairs({ "maxi-hub/maxi-hub-ui.lua", "maxi-hub-ui.lua" }) do
 				if isfile(p) then
 					source = readfile(p)
@@ -2114,7 +2119,7 @@ do
 			end
 		end
 		if not source then
-			error("[MAXI HUB] Нужен maxi-hub-ui.lua (workspace или GitHub)")
+			error("[MAXI HUB] Нужен maxi-hub-ui.lua (официальный репо или workspace)")
 		end
 		local chunk, cerr = loadstring(source, "@maxi-hub-ui.lua")
 		if not chunk then error("[MAXI HUB] UI compile: " .. tostring(cerr)) end
