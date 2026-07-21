@@ -21,23 +21,53 @@ local function getOfficialRaw()
 	return genv.MaxiHubOfficialRaw or OFFICIAL_RAW
 end
 
+local function isErrorPage(src)
+	if type(src) ~= "string" or src == "" then
+		return true
+	end
+	if src:sub(1, 1) ~= "<" then
+		return false
+	end
+	local head = src:sub(1, 400):lower()
+	return head:find("<!doctype", 1, true) ~= nil
+		or head:find("<html", 1, true) ~= nil
+end
+
+local function httpGet(url)
+	if typeof(request) == "function" then
+		local ok, res = pcall(function()
+			return request({ Url = url, Method = "GET" })
+		end)
+		if ok and type(res) == "table" and type(res.Body) == "string" and res.Body ~= "" then
+			return res.Body
+		end
+	end
+	if typeof(game.HttpGet) == "function" then
+		local ok, body = pcall(game.HttpGet, url, true)
+		if ok and type(body) == "string" and body ~= "" then
+			return body
+		end
+		ok, body = pcall(game.HttpGet, url)
+		if ok and type(body) == "string" and body ~= "" then
+			return body
+		end
+	end
+	return nil
+end
+
 local function fetchModule(fileName, localPaths)
 	local genv = getGenv()
 	local base = getOfficialRaw()
 	local repoOnly = genv.MaxiHubRepoOnly == true
 
-	if typeof(game.HttpGet) == "function" then
-		local ok, src = pcall(function()
-			return game:HttpGet(base .. fileName)
-		end)
-		if ok and type(src) == "string" and src ~= "" then
-			if src:find("<!DOCTYPE", 1, true) or src:find("<html", 1, true) then
-				if repoOnly then
-					error("[MAXI HUB] Официальный файл не найден: " .. fileName)
-				end
-			else
-				return src
+	local src = httpGet(base .. fileName .. "?v=" .. tostring(os.time()))
+	if type(src) == "string" and src ~= "" then
+		if isErrorPage(src) then
+			if repoOnly then
+				error("[MAXI HUB] Официальный файл не найден: " .. fileName)
 			end
+		else
+			return src
 		end
 	end
 

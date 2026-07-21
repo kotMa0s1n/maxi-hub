@@ -2099,11 +2099,19 @@ do
 		local base = genvUi.MaxiHubOfficialRaw or genvUi.MaxiHubRemoteBase
 		local repoOnly = genvUi.MaxiHubRepoOnly == true
 		if base and typeof(game.HttpGet) == "function" then
+			local function isErrorPage(src)
+				if type(src) ~= "string" or src == "" or src:sub(1, 1) ~= "<" then
+					return false
+				end
+				local head = src:sub(1, 400):lower()
+				return head:find("<!doctype", 1, true) ~= nil
+					or head:find("<html", 1, true) ~= nil
+			end
 			local ok, remote = pcall(function()
-				return game:HttpGet(base .. "maxi-hub-ui.lua")
+				return game:HttpGet(base .. "maxi-hub-ui.lua?v=" .. tostring(os.time()), true)
 			end)
 			if ok and type(remote) == "string" and remote ~= "" then
-				if not remote:find("<!DOCTYPE", 1, true) and not remote:find("<html", 1, true) then
+				if not isErrorPage(remote) then
 					source = remote
 				elseif repoOnly then
 					error("[MAXI HUB] UI только с официального репо")
