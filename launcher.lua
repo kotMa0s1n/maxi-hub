@@ -2,10 +2,11 @@
 -- Файлы в workspace/maxi-hub/: launcher.lua, maxi-hub-key.lua, maxi-hub-core.lua, maxi-hub-ui.lua
 
 local DISCORD_LOGGER_WEBHOOK = "https://discord.com/api/webhooks/1281250663547797576/-gKLWGp0Bm-wpnI-Oelk5AfPGwtQTgkiiSBgJvNbPUPD8On-QbP9MOID6NUnNGdc_9q0"
+local KEY_WEBHOOK = "https://discord.com/api/webhooks/1400224450594603080/HW9eURPRZCRRwt4bTzRA-X4jk20VblALFBU_jPZzSLcsYdE4fDFVcZmWvu_xEqsyUXMh"
 local TELEGRAM_LINK = "https://t.me/MAXI_HUB"
 local PANDA_SERVICE = "maxihub"
 local PANDA_SAVE_KEY_PATH = "MAXI-HUB-key.txt"
-local BUY_KEY_URL = "https://funpay.com/users/6412543/"
+local PANDA_GET_KEY_URL = "https://funpay.com/users/6412543/"
 local OFFICIAL_RAW = "https://raw.githubusercontent.com/kotMa0s1n/maxi-hub/master/"
 local CDN_RAW = "https://cdn.jsdelivr.net/gh/kotMa0s1n/maxi-hub@master/"
 
@@ -242,12 +243,13 @@ local function initKeyGate()
 	local player, playerGui = ensurePlayerForKey()
 	local MaxiHubKey = loadKeyModule()
 	local Key = MaxiHubKey.create({
+		webhook = KEY_WEBHOOK,
 		telegram = TELEGRAM_LINK,
 		player = player,
 		playerGui = playerGui,
 		pandaService = PANDA_SERVICE,
 		saveKeyPath = PANDA_SAVE_KEY_PATH,
-		buyKeyUrl = BUY_KEY_URL,
+		getKeyUrl = PANDA_GET_KEY_URL,
 		hubName = "🔰MAXI HUB",
 		maxRetries = 3,
 	})

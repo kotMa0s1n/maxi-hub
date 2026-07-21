@@ -9,6 +9,19 @@ local PANDA_LIB_URLS = {
 	"https://api.pandauth.com/lib/external/v3.lua",
 }
 
+local function defaultHttpRequest(opts)
+	if typeof(request) == "function" then
+		return request(opts)
+	end
+	if syn and syn.request then
+		return syn.request(opts)
+	end
+	if http and http.request then
+		return http.request(opts)
+	end
+	return nil
+end
+
 local function canUseFiles()
 	return typeof(writefile) == "function"
 		and typeof(readfile) == "function"
@@ -26,6 +39,7 @@ end
 function MaxiHubKey.create(config)
 	config = config or {}
 
+	local WEBHOOK = config.webhook or ""
 	local TELEGRAM = config.telegram or "https://t.me/MAXI_HUB"
 	local CACHE_FILE = config.cacheFile or "maxi-hub-key-cache.json"
 	local SAVE_KEY_PATH = config.saveKeyPath or "MAXI-HUB-key.txt"
@@ -33,13 +47,13 @@ function MaxiHubKey.create(config)
 	local HUB_NAME = config.hubName or "🔰MAXI HUB"
 	local MAX_RETRIES = config.maxRetries or 3
 	local GET_KEY_URL = config.getKeyUrl or config.purchaseUrl or TELEGRAM
-	local BUY_KEY_URL = config.buyKeyUrl or config.purchaseUrl or GET_KEY_URL
 	local SILENT_MODE = config.silentMode == true
 	local CACHE_GRACE_SECONDS = config.cacheGraceSeconds or 3600
 	local SILENT_MAX_RETRIES = config.silentMaxRetries or 1
 
 	local player = config.player
 	local playerGui = config.playerGui
+	local httpRequest = config.httpRequest or defaultHttpRequest
 	local canUseConfigFile = config.canUseFiles or canUseFiles
 
 	local keyGateGui = nil
@@ -200,7 +214,7 @@ function MaxiHubKey.create(config)
 	local function validateWithPanda(key, silent, maxRetries)
 		local lib = loadPelinda()
 		if not lib or type(lib.Init) ~= "function" then
-			return false, "Не удалось подключиться к серверу ключей"
+			return false, "Не загрузилась библиотека Panda"
 		end
 		local trimmed = type(key) == "string" and key:gsub("%s+", "") or ""
 		if trimmed == "" then
@@ -225,7 +239,7 @@ function MaxiHubKey.create(config)
 				if attempt < retries then
 					task.wait(0.35)
 				else
-					return false, "Ошибка сервера ключей"
+					return false, "Сервис Panda не найден (404). Проверь ID: " .. PANDA_SERVICE
 				end
 			else
 				return false, "Неверный или истёкший ключ"
@@ -264,6 +278,38 @@ function MaxiHubKey.create(config)
 			end
 		end
 		return GET_KEY_URL
+	end
+
+	local function logActivation(key, expiresAt, isPremium)
+		if not WEBHOOK or WEBHOOK == "" or not player then
+			return
+		end
+		local fields = {
+			{ name = "Ключ", value = key, inline = true },
+			{ name = "Игрок", value = player.Name, inline = true },
+			{ name = "UserId", value = tostring(player.UserId), inline = true },
+			{ name = "Premium", value = isPremium and "да" or "нет", inline = true },
+			{ name = "До", value = expiresAt and formatTime(expiresAt) or "без срока", inline = false },
+			{ name = "Система", value = "Panda · " .. PANDA_SERVICE, inline = false },
+		}
+		pcall(function()
+			httpRequest({
+				Url = WEBHOOK,
+				Method = "POST",
+				Headers = { ["Content-Type"] = "application/json" },
+				Body = HttpService:JSONEncode({
+					embeds = {
+						{
+							title = "Ключ активирован (Panda)",
+							color = 5763719,
+							fields = fields,
+							footer = { text = "🔰MAXI HUB" },
+							timestamp = DateTime.now():ToIsoDate(),
+						},
+					},
+				}),
+			})
+		end)
 	end
 
 	local function destroyGate()
@@ -350,8 +396,8 @@ function MaxiHubKey.create(config)
 		overlay.Parent = keyGateGui
 
 		local card = Instance.new("Frame")
-		card.Size = UDim2.new(0, 400, 0, 372)
-		card.Position = UDim2.new(0.5, -200, 0.5, -186)
+		card.Size = UDim2.new(0, 400, 0, 360)
+		card.Position = UDim2.new(0.5, -200, 0.5, -180)
 		card.BackgroundColor3 = KEY_COLORS.card
 		card.BorderSizePixel = 0
 		card.Parent = overlay
@@ -372,18 +418,6 @@ function MaxiHubKey.create(config)
 		accent.BorderSizePixel = 0
 		accent.Parent = card
 
-		local closeBtn = Instance.new("TextButton")
-		closeBtn.Position = UDim2.new(1, -36, 0, 12)
-		closeBtn.Size = UDim2.new(0, 24, 0, 24)
-		closeBtn.BackgroundTransparency = 1
-		closeBtn.Font = Enum.Font.Gotham
-		closeBtn.Text = "✕"
-		closeBtn.TextColor3 = KEY_COLORS.muted
-		closeBtn.TextSize = 16
-		closeBtn.AutoButtonColor = false
-		closeBtn.Parent = card
-		closeBtn.MouseButton1Click:Connect(destroyGate)
-
 		local title = Instance.new("TextLabel")
 		title.BackgroundTransparency = 1
 		title.Position = UDim2.new(0, 24, 0, 36)
@@ -400,7 +434,7 @@ function MaxiHubKey.create(config)
 		sub.Position = UDim2.new(0, 24, 0, 68)
 		sub.Size = UDim2.new(1, -48, 0, 18)
 		sub.Font = Enum.Font.Gotham
-		sub.Text = "Введи ключ доступа"
+		sub.Text = "Введи ключ доступа Panda"
 		sub.TextColor3 = KEY_COLORS.muted
 		sub.TextSize = 12
 		sub.TextXAlignment = Enum.TextXAlignment.Left
@@ -423,7 +457,7 @@ function MaxiHubKey.create(config)
 		inputBox.BackgroundColor3 = KEY_COLORS.inputBg
 		inputBox.BorderSizePixel = 0
 		inputBox.Font = Enum.Font.Gotham
-		inputBox.PlaceholderText = "Вставь свой ключ"
+		inputBox.PlaceholderText = "Вставь ключ из Panda"
 		inputBox.PlaceholderColor3 = KEY_COLORS.muted
 		inputBox.Text = readSavedKey() or ""
 		inputBox.TextColor3 = KEY_COLORS.text
@@ -464,30 +498,21 @@ function MaxiHubKey.create(config)
 		verifyCorner.CornerRadius = UDim.new(0, 8)
 		verifyCorner.Parent = verifyBtn
 
-		local buyBtn = Instance.new("TextButton")
-		buyBtn.Position = UDim2.new(0, 24, 0, 252)
-		buyBtn.Size = UDim2.new(1, -48, 0, 40)
-		buyBtn.BackgroundColor3 = KEY_COLORS.panel
-		buyBtn.BorderSizePixel = 0
-		buyBtn.Font = Enum.Font.GothamBold
-		buyBtn.Text = "Купить ключ"
-		buyBtn.TextColor3 = KEY_COLORS.accent
-		buyBtn.TextSize = 13
-		buyBtn.AutoButtonColor = false
-		buyBtn.Parent = card
-
-		local buyCorner = Instance.new("UICorner")
-		buyCorner.CornerRadius = UDim.new(0, 8)
-		buyCorner.Parent = buyBtn
-
-		local buyStroke = Instance.new("UIStroke")
-		buyStroke.Color = KEY_COLORS.accent
-		buyStroke.Thickness = 1
-		buyStroke.Parent = buyBtn
+		local getBtn = Instance.new("TextButton")
+		getBtn.Position = UDim2.new(0, 24, 0, 252)
+		getBtn.Size = UDim2.new(1, -48, 0, 22)
+		getBtn.BackgroundTransparency = 1
+		getBtn.Font = Enum.Font.Gotham
+		getBtn.Text = "Получить ключ →"
+		getBtn.TextColor3 = KEY_COLORS.muted
+		getBtn.TextSize = 12
+		getBtn.AutoButtonColor = false
+		getBtn.TextXAlignment = Enum.TextXAlignment.Left
+		getBtn.Parent = card
 
 		local status = Instance.new("TextLabel")
 		status.BackgroundTransparency = 1
-		status.Position = UDim2.new(0, 24, 1, -36)
+		status.Position = UDim2.new(0, 24, 1, -42)
 		status.Size = UDim2.new(1, -48, 0, 16)
 		status.Font = Enum.Font.Gotham
 		status.Text = ""
@@ -496,17 +521,28 @@ function MaxiHubKey.create(config)
 		status.TextXAlignment = Enum.TextXAlignment.Left
 		status.Parent = card
 
+		local foot = Instance.new("TextLabel")
+		foot.BackgroundTransparency = 1
+		foot.Position = UDim2.new(0, 24, 1, -22)
+		foot.Size = UDim2.new(1, -48, 0, 12)
+		foot.Font = Enum.Font.Gotham
+		foot.Text = "Panda Key System · " .. PANDA_SERVICE
+		foot.TextColor3 = Color3.fromRGB(80, 88, 92)
+		foot.TextSize = 9
+		foot.TextXAlignment = Enum.TextXAlignment.Left
+		foot.Parent = card
+
 		local verifying = false
 
-		buyBtn.MouseButton1Click:Connect(function()
-			local link = BUY_KEY_URL
+		getBtn.MouseButton1Click:Connect(function()
+			local link = getKeyLink()
 			if not link or link == "" then
 				status.Text = "Ссылка не настроена"
 				status.TextColor3 = KEY_COLORS.error
 				return
 			end
 			if safeCopy(link) then
-				status.Text = "Ссылка на покупку скопирована"
+				status.Text = "Ссылка скопирована в буфер"
 				status.TextColor3 = KEY_COLORS.success
 			else
 				status.Text = link:gsub("https://", "")
@@ -531,6 +567,7 @@ function MaxiHubKey.create(config)
 				verifying = false
 				verifyBtn.Text = "Продолжить"
 				if ok then
+					logActivation(key, expiresAt, isPremium)
 					status.Text = "Ключ принят"
 					status.TextColor3 = KEY_COLORS.success
 					task.wait(0.45)
@@ -560,7 +597,7 @@ function MaxiHubKey.create(config)
 		end
 
 		if not loadPelinda() then
-			warn("[MAXI HUB] auth library не загрузилась")
+			warn("[MAXI HUB] Panda library не загрузилась")
 			return
 		end
 
