@@ -427,7 +427,7 @@ function MaxiHubKey.create(config)
 		sub.Position = UDim2.new(0, 24, 0, 68)
 		sub.Size = UDim2.new(1, -48, 0, 18)
 		sub.Font = Enum.Font.Gotham
-		sub.Text = "Введи ключ доступа Panda"
+		sub.Text = "Введи ключ"
 		sub.TextColor3 = KEY_COLORS.muted
 		sub.TextSize = 12
 		sub.TextXAlignment = Enum.TextXAlignment.Left
@@ -450,7 +450,7 @@ function MaxiHubKey.create(config)
 		inputBox.BackgroundColor3 = KEY_COLORS.inputBg
 		inputBox.BorderSizePixel = 0
 		inputBox.Font = Enum.Font.Gotham
-		inputBox.PlaceholderText = "Вставь ключ из Panda"
+		inputBox.PlaceholderText = "Вставь ключ"
 		inputBox.PlaceholderColor3 = KEY_COLORS.muted
 		inputBox.Text = readSavedKey() or ""
 		inputBox.TextColor3 = KEY_COLORS.text
