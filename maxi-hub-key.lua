@@ -498,18 +498,6 @@ function MaxiHubKey.create(config)
 		verifyCorner.CornerRadius = UDim.new(0, 8)
 		verifyCorner.Parent = verifyBtn
 
-		local getBtn = Instance.new("TextButton")
-		getBtn.Position = UDim2.new(0, 24, 0, 252)
-		getBtn.Size = UDim2.new(1, -48, 0, 22)
-		getBtn.BackgroundTransparency = 1
-		getBtn.Font = Enum.Font.Gotham
-		getBtn.Text = "Получить ключ →"
-		getBtn.TextColor3 = KEY_COLORS.muted
-		getBtn.TextSize = 12
-		getBtn.AutoButtonColor = false
-		getBtn.TextXAlignment = Enum.TextXAlignment.Left
-		getBtn.Parent = card
-
 		local status = Instance.new("TextLabel")
 		status.BackgroundTransparency = 1
 		status.Position = UDim2.new(0, 24, 1, -42)
