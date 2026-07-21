@@ -1,15 +1,39 @@
 local RAW = "https://raw.githubusercontent.com/kotMa0s1n/maxi-hub/master/"
-local genv = typeof(getgenv) == "function" and getgenv() or _G
-genv.MaxiHubRemoteBase = RAW
-genv.MaxiHubLoaderUrl = RAW .. "loader.lua"
+local FILES = {
+	"launcher.lua",
+	"maxi-hub-key.lua",
+	"maxi-hub-core.lua",
+	"maxi-hub-ui.lua",
+}
 
 if typeof(game.HttpGet) ~= "function" then
 	error("[MAXI HUB] Нужен executor с HttpGet")
 end
+if typeof(writefile) ~= "function" or typeof(readfile) ~= "function" then
+	error("[MAXI HUB] Нужен executor с writefile/readfile")
+end
 
-local src = game:HttpGet(RAW .. "launcher.lua")
-local chunk, err = loadstring(src, "@launcher.lua")
+local genv = typeof(getgenv) == "function" and getgenv() or _G
+genv.MaxiHubLoaderUrl = RAW .. "loader.lua"
+
+if typeof(makefolder) == "function" then
+	pcall(makefolder, "maxi-hub")
+end
+
+for _, name in ipairs(FILES) do
+	local path = "maxi-hub/" .. name
+	local ok, src = pcall(function()
+		return game:HttpGet(RAW .. name)
+	end)
+	if not ok or type(src) ~= "string" or src == "" then
+		error("[MAXI HUB] Не скачался: " .. name)
+	end
+	writefile(path, src)
+end
+
+local launcher = readfile("maxi-hub/launcher.lua")
+local chunk, err = loadstring(launcher, "@launcher.lua")
 if not chunk then
-	error("[MAXI HUB] loader: " .. tostring(err))
+	error("[MAXI HUB] launcher: " .. tostring(err))
 end
 chunk()
