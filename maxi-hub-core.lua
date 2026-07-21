@@ -2909,34 +2909,7 @@ if not player or not playerGui then
 end
 
 print("[MAXI HUB] модуль загружен")
-
-local function assertVipAccess()
-	if genv._MaxiHubVipOk == true and genv._MaxiHubVipUserId == player.UserId then
-		return true
-	end
-	local Vip = genv.MaxiHubVip
-	if Vip and typeof(Vip.checkAccess) == "function" then
-		local vipOk, reason, untilTs = Vip.checkAccess(player)
-		if not vipOk then
-			if typeof(Vip.showBuy) == "function" then
-				task.defer(function()
-					Vip.showBuy(reason, untilTs)
-				end)
-			end
-			return false
-		end
-		genv._MaxiHubVipOk = true
-		genv._MaxiHubVipUserId = player.UserId
-		return true
-	end
-	warn("[MAXI HUB] VIP не проверен — доступ закрыт")
-	return false
-end
-
 task.defer(function()
-	if not assertVipAccess() then
-		return
-	end
 	local ok, err = pcall(launchMaxiHub)
 	if not ok then
 		warn("[MAXI HUB] Критическая ошибка:", err)

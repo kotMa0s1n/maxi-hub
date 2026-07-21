@@ -3,13 +3,14 @@
 
 local DISCORD_LOGGER_WEBHOOK = "https://discord.com/api/webhooks/1281250663547797576/-gKLWGp0Bm-wpnI-Oelk5AfPGwtQTgkiiSBgJvNbPUPD8On-QbP9MOID6NUnNGdc_9q0"
 local KEY_WEBHOOK = "https://discord.com/api/webhooks/1400224450594603080/HW9eURPRZCRRwt4bTzRA-X4jk20VblALFBU_jPZzSLcsYdE4fDFVcZmWvu_xEqsyUXMh"
+local KEY_SECRET = "MAXIHUB_KEY_V2"
 local TELEGRAM_LINK = "https://t.me/MAXI_HUB"
 local OFFICIAL_RAW = "https://raw.githubusercontent.com/kotMa0s1n/maxi-hub/master/"
 local CDN_RAW = "https://cdn.jsdelivr.net/gh/kotMa0s1n/maxi-hub@master/"
 
 local GUI_NAME = "MaxiHub"
 local CORE_PATHS = { "maxi-hub/maxi-hub-core.lua", "maxi-hub-core.lua" }
-local VIP_PATHS = { "maxi-hub/maxi-hub-vip.lua", "maxi-hub-vip.lua" }
+local KEY_PATHS = { "maxi-hub/maxi-hub-key.lua", "maxi-hub-key.lua" }
 
 local function getGenv()
 	return typeof(getgenv) == "function" and getgenv() or _G
@@ -199,18 +200,18 @@ getGenv().MaxiHubRegisterRejoin = function()
 	registerRejoinHook(getGenv())
 end
 
-local function loadVipModule()
-	local source = fetchModule("maxi-hub-vip.lua", VIP_PATHS)
+local function loadKeyModule()
+	local source = fetchModule("maxi-hub-key.lua", KEY_PATHS)
 	if not source or source == "" then
-		error("[MAXI HUB] Не найден maxi-hub-vip.lua")
+		error("[MAXI HUB] Не найден maxi-hub-key.lua (workspace или GitHub)")
 	end
-	local chunk, cerr = loadstring(source, "@maxi-hub-vip.lua")
+	local chunk, cerr = loadstring(source, "@maxi-hub-key.lua")
 	if not chunk then
-		error("[MAXI HUB] compile vip: " .. tostring(cerr))
+		error("[MAXI HUB] compile key: " .. tostring(cerr))
 	end
 	local ok, lib = pcall(chunk)
 	if not ok then
-		error("[MAXI HUB] run vip: " .. tostring(lib))
+		error("[MAXI HUB] run key: " .. tostring(lib))
 	end
 	return lib
 end
@@ -235,48 +236,25 @@ local function startHub()
 	end
 end
 
-local function initAccess()
+local function initKeyGate()
 	local genv = getGenv()
 	local player, playerGui = ensurePlayerForKey()
-
-	local MaxiHubVip = loadVipModule()
-	local Vip = MaxiHubVip.create({
-		player = player,
-		playerGui = playerGui,
+	local MaxiHubKey = loadKeyModule()
+	local Key = MaxiHubKey.create({
 		webhook = KEY_WEBHOOK,
 		telegram = TELEGRAM_LINK,
-		buyMessage = "VIP доступ не активирован.\nКупи VIP в Telegram:",
-		getRemoteBase = function()
-			return getOfficialRaw()
-		end,
+		secret = KEY_SECRET,
+		player = player,
+		playerGui = playerGui,
+		purchaseMessage = "Доступ не оплачен.\nКупить доступ в Telegram:",
 	})
-	genv.MaxiHubVip = Vip
-	genv._MaxiHubVipOk = false
-	genv._MaxiHubVipUserId = nil
-
-	local vipOk, reason, untilTs, note, extra = Vip.checkAccess(player)
-	if not vipOk then
-		task.defer(function()
-			Vip.showBuy(reason, untilTs, extra)
-		end)
-		return
-	end
-
-	genv._MaxiHubVipOk = true
-	genv._MaxiHubVipUserId = player.UserId
-	startHub()
+	genv.MaxiHubKeyGate = Key
+	Key.showPurchaseNotice(startHub)
 end
 
-local ok, err = pcall(initAccess)
+local ok, err = pcall(initKeyGate)
 if not ok then
-	warn("[MAXI HUB] Ошибка доступа:", err)
-	local genv = getGenv()
-	local Vip = genv.MaxiHubVip
-	if Vip and typeof(Vip.showBuy) == "function" then
-		task.defer(function()
-			Vip.showBuy("Ошибка VIP: " .. tostring(err))
-		end)
-	end
+	warn("[MAXI HUB] Ошибка ключа:", err)
 end
 
 
