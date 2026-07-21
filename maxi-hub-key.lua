@@ -299,7 +299,7 @@ function MaxiHubKey.create(config)
 		title.TextSize = 16
 		title.TextColor3 = KEY_COLORS.text
 		title.TextXAlignment = Enum.TextXAlignment.Left
-		title.Text = "MAXI HUB"
+		title.Text = "🔰MAXI HUB"
 		title.Parent = root
 
 		local hint = Instance.new("TextLabel")
