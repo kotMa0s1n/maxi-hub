@@ -6,6 +6,7 @@ local KEY_WEBHOOK = "https://discord.com/api/webhooks/1400224450594603080/HW9eUR
 local KEY_SECRET = "MAXIHUB_KEY_V2"
 local TELEGRAM_LINK = "https://t.me/MAXI_HUB"
 local OFFICIAL_RAW = "https://raw.githubusercontent.com/kotMa0s1n/maxi-hub/master/"
+local CDN_RAW = "https://cdn.jsdelivr.net/gh/kotMa0s1n/maxi-hub@master/"
 
 local GUI_NAME = "MaxiHub"
 local CORE_PATHS = { "maxi-hub/maxi-hub-core.lua", "maxi-hub-core.lua" }
@@ -21,27 +22,13 @@ local function getOfficialRaw()
 	return genv.MaxiHubOfficialRaw or OFFICIAL_RAW
 end
 
-local function isErrorPage(src)
-	if type(src) ~= "string" or src == "" then
-		return true
-	end
-	if src:sub(1, 1) ~= "<" then
-		return false
-	end
-	local head = src:sub(1, 400):lower()
-	return head:find("<!doctype", 1, true) ~= nil
-		or head:find("<html", 1, true) ~= nil
+local function cacheBust()
+	local t = (typeof(os) == "table" and os.time and os.time()) or 0
+	local r = (typeof(math) == "table" and math.random and math.random(1000, 9999)) or 0
+	return tostring(t) .. tostring(r)
 end
 
 local function httpGet(url)
-	if typeof(request) == "function" then
-		local ok, res = pcall(function()
-			return request({ Url = url, Method = "GET" })
-		end)
-		if ok and type(res) == "table" and type(res.Body) == "string" and res.Body ~= "" then
-			return res.Body
-		end
-	end
 	if typeof(game.HttpGet) == "function" then
 		local ok, body = pcall(game.HttpGet, url, true)
 		if ok and type(body) == "string" and body ~= "" then
@@ -52,21 +39,44 @@ local function httpGet(url)
 			return body
 		end
 	end
+	if typeof(request) == "function" then
+		local ok, res = pcall(function()
+			return request({ Url = url, Method = "GET" })
+		end)
+		if ok and type(res) == "table" and type(res.Body) == "string" and res.Body ~= "" then
+			return res.Body
+		end
+	end
 	return nil
 end
 
-local function fetchModule(fileName, localPaths)
-	local genv = getGenv()
-	local base = getOfficialRaw()
-	local repoOnly = genv.MaxiHubRepoOnly == true
+local function isValidLua(src, label)
+	if type(src) ~= "string" or src == "" then
+		return false
+	end
+	return loadstring(src, label or "@module") ~= nil
+end
 
-	local src = httpGet(base .. fileName .. "?v=" .. tostring(os.time()))
-	if type(src) == "string" and src ~= "" then
-		if isErrorPage(src) then
-			if repoOnly then
-				error("[MAXI HUB] Официальный файл не найден: " .. fileName)
+local function fetchModule(fileName, localPaths)
+	if typeof(readfile) == "function" and typeof(isfile) == "function" then
+		for _, path in ipairs(localPaths) do
+			if isfile(path) then
+				local src = readfile(path)
+				if isValidLua(src, "@" .. path) then
+					return src
+				end
 			end
-		else
+		end
+	end
+
+	local genv = getGenv()
+	local repoOnly = genv.MaxiHubRepoOnly == true
+	local bases = { getOfficialRaw(), CDN_RAW }
+	local bust = cacheBust()
+
+	for _, base in ipairs(bases) do
+		local src = httpGet(base .. fileName .. "?v=" .. bust)
+		if isValidLua(src, "@" .. fileName) then
 			return src
 		end
 	end
@@ -75,13 +85,6 @@ local function fetchModule(fileName, localPaths)
 		error("[MAXI HUB] Только официальный репо: " .. fileName)
 	end
 
-	if typeof(readfile) == "function" and typeof(isfile) == "function" then
-		for _, path in ipairs(localPaths) do
-			if isfile(path) then
-				return readfile(path)
-			end
-		end
-	end
 	return nil
 end
 
