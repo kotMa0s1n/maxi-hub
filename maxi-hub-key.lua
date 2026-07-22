@@ -5,8 +5,8 @@ local HttpService = game:GetService("HttpService")
 local MaxiHubKey = {}
 
 local PANDA_LIB_URLS = {
-	"https://api.pandauth.com/lib/external/panda-v3-external.lua",
 	"https://api.pandauth.com/lib/external/v3.lua",
+	"https://api.pandauth.com/lib/external/panda-v3-external.lua",
 }
 
 local function defaultHttpRequest(opts)
@@ -49,7 +49,7 @@ function MaxiHubKey.create(config)
 	local GET_KEY_URL = config.getKeyUrl or config.purchaseUrl or TELEGRAM
 	local SILENT_MODE = config.silentMode == true
 	local CACHE_GRACE_SECONDS = config.cacheGraceSeconds or 3600
-	local SILENT_MAX_RETRIES = config.silentMaxRetries or 1
+	local SILENT_MAX_RETRIES = config.silentMaxRetries or 3
 
 	local player = config.player
 	local playerGui = config.playerGui
@@ -251,21 +251,55 @@ function MaxiHubKey.create(config)
 		})
 	end
 
+	local function httpGetBody(url)
+		if typeof(game.HttpGet) == "function" then
+			local ok, body = pcall(game.HttpGet, url, true)
+			if ok and type(body) == "string" and body ~= "" and not body:lower():find("<!doctype", 1, true) then
+				return body
+			end
+			ok, body = pcall(game.HttpGet, url)
+			if ok and type(body) == "string" and body ~= "" and not body:lower():find("<!doctype", 1, true) then
+				return body
+			end
+		end
+		local ok, res = pcall(function()
+			return httpRequest({
+				Url = url,
+				Method = "GET",
+			})
+		end)
+		if ok and type(res) == "table" and type(res.Body) == "string" and res.Body ~= "" then
+			return res.Body
+		end
+		return nil
+	end
+
+	local function resolvePelindaLib(value)
+		if type(value) == "table" and type(value.Init) == "function" then
+			return value
+		end
+		if type(value) == "function" then
+			local ok, second = pcall(value)
+			if ok then
+				return resolvePelindaLib(second)
+			end
+		end
+		return nil
+	end
+
 	local function loadPelinda()
 		if Pelinda then
 			return Pelinda
 		end
-		if typeof(game.HttpGet) ~= "function" then
-			return nil
-		end
 		for _, url in ipairs(PANDA_LIB_URLS) do
-			local ok, src = pcall(game.HttpGet, url)
-			if ok and type(src) == "string" and src ~= "" then
+			local src = httpGetBody(url)
+			if type(src) == "string" and src ~= "" then
 				local chunk = loadstring(src, "@panda-v3")
 				if chunk then
 					local okRun, lib = pcall(chunk)
-					if okRun and type(lib) == "table" then
-						Pelinda = lib
+					local resolved = resolvePelindaLib(lib)
+					if resolved then
+						Pelinda = resolved
 						return Pelinda
 					end
 				end
@@ -379,11 +413,13 @@ function MaxiHubKey.create(config)
 			retries = silent and SILENT_MAX_RETRIES or MAX_RETRIES
 		end
 		for attempt = 1, retries do
-			local ok, result = pcall(lib.Init, {
-				Service = PANDA_SERVICE,
-				Key = trimmed,
-				SilentMode = true,
-			})
+			local ok, result = pcall(function()
+				return lib.Init({
+					Service = PANDA_SERVICE,
+					Key = trimmed,
+					SilentMode = true,
+				})
+			end)
 			if ok and result == "validated!!" then
 				local expiresAt, isPremium = capturePandaGlobals()
 				writeCache(trimmed, expiresAt, isPremium)
@@ -395,8 +431,14 @@ function MaxiHubKey.create(config)
 				else
 					return false, t("key_err_panda_404") .. PANDA_SERVICE
 				end
-			else
+			elseif ok and result == "invalid!!" then
 				return false, t("key_err_invalid_expired")
+			else
+				if attempt < retries then
+					task.wait(0.35)
+				else
+					return false, t("key_err_check_failed")
+				end
 			end
 		end
 		return false, t("key_err_check_failed")
@@ -530,7 +572,7 @@ function MaxiHubKey.create(config)
 		registerLocale(label, "key_gate_checking")
 	end
 
-	local function buildAuthGate(onContinue)
+	local function buildAuthGate(onContinue, initialStatus)
 		destroyGate()
 		localeBindings = {}
 		verifying = false
@@ -677,8 +719,8 @@ function MaxiHubKey.create(config)
 		status.Position = UDim2.new(0, 24, 1, -42)
 		status.Size = UDim2.new(1, -48, 0, 16)
 		status.Font = Enum.Font.Gotham
-		status.Text = ""
-		status.TextColor3 = KEY_COLORS.muted
+		status.Text = initialStatus or ""
+		status.TextColor3 = initialStatus and KEY_COLORS.error or KEY_COLORS.muted
 		status.TextSize = 11
 		status.TextXAlignment = Enum.TextXAlignment.Left
 		status.Parent = card
@@ -760,6 +802,7 @@ function MaxiHubKey.create(config)
 
 		if not loadPelinda() then
 			warn("[MAXI HUB] Panda library не загрузилась")
+			buildAuthGate(onContinue, t("key_err_panda_lib"))
 			return
 		end
 
