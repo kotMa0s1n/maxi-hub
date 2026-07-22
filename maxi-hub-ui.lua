@@ -36,6 +36,7 @@ function MaxiHubUI.create(config)
 	local guiName = config.guiName or "MaxiHub"
 	local titleText = config.title or "MAXI HUB"
 	local titleHintText = config.titleHint or "RightCtrl — скрыть"
+	local versionText = config.version or ""
 	local tabs = config.tabs
 	if tabs == nil then
 		tabs = {
@@ -51,7 +52,26 @@ function MaxiHubUI.create(config)
 	local onLanguageChange = config.onLanguageChange
 	local registerLocale = config.registerLocale
 	local hideHintMessage = config.hideHintText or "RightCtrl — open menu"
+	local onMobileFarmStop = config.onMobileFarmStop
+	local onMobileMenuToggle = config.onMobileMenuToggle
 	local activeTabId = 1
+
+	local function isMobileDevice()
+		local platform = UserInputService:GetPlatform()
+		return platform == Enum.Platform.IOS
+			or platform == Enum.Platform.Android
+			or UserInputService.TouchEnabled
+	end
+
+	local mobileMode = config.forceMobile == true or isMobileDevice()
+	if mobileMode then
+		local cam = workspace.CurrentCamera
+		if cam then
+			local vp = cam.ViewportSize
+			WINDOW_W = math.clamp(math.floor(vp.X * 0.94), 320, 640)
+			WINDOW_H = math.clamp(math.floor(vp.Y * 0.82), 380, 720)
+		end
+	end
 
 	local COLORS = config.colors or {
 		bg = Color3.fromRGB(14, 16, 18),
@@ -89,6 +109,78 @@ function MaxiHubUI.create(config)
 		local c = Instance.new("UICorner")
 		c.CornerRadius = UDim.new(0, r or 8)
 		c.Parent = parent
+	end
+
+	local function makeCollapsibleSection(parent, text, order, localeKey, startCollapsed)
+		local section = Instance.new("Frame")
+		section.Size = UDim2.new(1, 0, 0, 0)
+		section.AutomaticSize = Enum.AutomaticSize.Y
+		section.BackgroundTransparency = 1
+		section.LayoutOrder = order
+		section.Parent = parent
+
+		local sectionLayout = Instance.new("UIListLayout")
+		sectionLayout.Padding = UDim.new(0, 4)
+		sectionLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		sectionLayout.Parent = section
+
+		local header = Instance.new("TextButton")
+		header.Size = UDim2.new(1, 0, 0, 28)
+		header.BackgroundTransparency = 1
+		header.BorderSizePixel = 0
+		header.Text = ""
+		header.AutoButtonColor = false
+		header.LayoutOrder = 1
+		header.Parent = section
+
+		local arrow = Instance.new("TextLabel")
+		arrow.Size = UDim2.new(0, 16, 1, 0)
+		arrow.BackgroundTransparency = 1
+		arrow.Font = Enum.Font.GothamBold
+		arrow.TextSize = 10
+		arrow.TextColor3 = COLORS.muted
+		arrow.TextXAlignment = Enum.TextXAlignment.Left
+		arrow.Text = "▼"
+		arrow.Parent = header
+
+		local titleLbl = Instance.new("TextLabel")
+		titleLbl.Size = UDim2.new(1, -18, 1, 0)
+		titleLbl.Position = UDim2.new(0, 16, 0, 0)
+		titleLbl.BackgroundTransparency = 1
+		titleLbl.Font = Enum.Font.GothamBold
+		titleLbl.TextSize = 11
+		titleLbl.TextColor3 = COLORS.muted
+		titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+		titleLbl.Text = string.upper(text)
+		titleLbl.Parent = header
+		if registerLocale and localeKey then
+			registerLocale(titleLbl, localeKey)
+		end
+
+		local body = Instance.new("Frame")
+		body.Size = UDim2.new(1, 0, 0, 0)
+		body.AutomaticSize = Enum.AutomaticSize.Y
+		body.BackgroundTransparency = 1
+		body.LayoutOrder = 2
+		body.Parent = section
+
+		local layout = Instance.new("UIListLayout")
+		layout.Padding = UDim.new(0, 6)
+		layout.SortOrder = Enum.SortOrder.LayoutOrder
+		layout.Parent = body
+
+		local collapsed = startCollapsed == true
+		local function paint()
+			arrow.Text = collapsed and "▶" or "▼"
+			body.Visible = not collapsed
+		end
+
+		header.MouseButton1Click:Connect(function()
+			collapsed = not collapsed
+			paint()
+		end)
+		paint()
+		return body
 	end
 
 	local function makeDraggable(frame, handle)
@@ -338,6 +430,94 @@ function MaxiHubUI.create(config)
 		return function(v) val = v; paint() end
 	end
 
+	local function makeFlowSlider(parent, label, min, max, initial, onChange, layoutOrder, localeKey)
+		local box = Instance.new("Frame")
+		box.Size = UDim2.new(1, 0, 0, 52)
+		box.BackgroundColor3 = COLORS.panel
+		box.BorderSizePixel = 0
+		box.LayoutOrder = layoutOrder or 0
+		box.Parent = parent
+		addCorner(box, 8)
+
+		local name = Instance.new("TextLabel")
+		name.Size = UDim2.new(0.65, 0, 0, 20)
+		name.Position = UDim2.new(0, 12, 0, 6)
+		name.BackgroundTransparency = 1
+		name.Font = Enum.Font.Gotham
+		name.TextSize = 12
+		name.TextColor3 = COLORS.text
+		name.TextXAlignment = Enum.TextXAlignment.Left
+		name.Text = label
+		name.Parent = box
+		if registerLocale and localeKey then
+			registerLocale(name, localeKey)
+		end
+
+		local valueLbl = Instance.new("TextLabel")
+		valueLbl.Size = UDim2.new(0.35, -12, 0, 20)
+		valueLbl.Position = UDim2.new(0.65, 0, 0, 6)
+		valueLbl.BackgroundTransparency = 1
+		valueLbl.Font = Enum.Font.GothamBold
+		valueLbl.TextSize = 12
+		valueLbl.TextColor3 = COLORS.accent
+		valueLbl.TextXAlignment = Enum.TextXAlignment.Right
+		valueLbl.Parent = box
+
+		local track = Instance.new("TextButton")
+		track.Size = UDim2.new(1, -24, 0, 8)
+		track.Position = UDim2.new(0, 12, 1, -18)
+		track.BackgroundColor3 = COLORS.line
+		track.BorderSizePixel = 0
+		track.Text = ""
+		track.AutoButtonColor = false
+		track.Parent = box
+		addCorner(track, 4)
+
+		local fill = Instance.new("Frame")
+		fill.Size = UDim2.new(0, 0, 1, 0)
+		fill.BackgroundColor3 = COLORS.accent
+		fill.BorderSizePixel = 0
+		fill.Parent = track
+		addCorner(fill, 4)
+
+		local val = initial
+		local function paint()
+			local alpha = (val - min) / math.max(max - min, 0.001)
+			alpha = math.clamp(alpha, 0, 1)
+			fill.Size = UDim2.new(alpha, 0, 1, 0)
+			local decimals = (max - min) <= 3 and 1 or 0
+			valueLbl.Text = decimals == 0 and tostring(math.floor(val)) or string.format("%.1f", val)
+		end
+
+		local function setFromX(x)
+			local rel = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
+			val = min + (max - min) * rel
+			val = math.floor(val * 10 + 0.5) / 10
+			paint()
+			onChange(val)
+		end
+
+		track.MouseButton1Down:Connect(function(x)
+			setFromX(x)
+			local conn
+			conn = UserInputService.InputChanged:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseMovement then
+					setFromX(input.Position.X)
+				end
+			end)
+			local endConn
+			endConn = UserInputService.InputEnded:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 then
+					conn:Disconnect()
+					endConn:Disconnect()
+				end
+			end)
+		end)
+
+		paint()
+		return function(v) val = v; paint() end
+	end
+
 	local function makeScrollPage(parent)
 		local scroll = Instance.new("ScrollingFrame")
 		scroll.Size = UDim2.new(1, 0, 1, 0)
@@ -369,9 +549,11 @@ function MaxiHubUI.create(config)
 		wrap.Size = UDim2.new(1, 0, 0, 0)
 		wrap.AutomaticSize = Enum.AutomaticSize.Y
 		wrap.BackgroundTransparency = 1
+		wrap.LayoutOrder = 1
 		wrap.Parent = scroll
 		local layout = Instance.new("UIListLayout")
-		layout.Padding = UDim.new(0, 8)
+		layout.Padding = UDim.new(0, 6)
+		layout.SortOrder = Enum.SortOrder.LayoutOrder
 		layout.Parent = wrap
 		return wrap
 	end
@@ -455,18 +637,23 @@ function MaxiHubUI.create(config)
 	end
 
 	local function makeFlowToggle(parent, label, initial, onChange, layoutOrder, debounce, localeKey)
+		local cardStyle = parent:GetAttribute("MaxiHubCardToggles") == true
 		local row = Instance.new("TextButton")
-		row.Size = UDim2.new(1, 0, 0, 34)
-		row.BackgroundTransparency = 1
+		row.Size = UDim2.new(1, 0, 0, cardStyle and 38 or 34)
+		row.BackgroundTransparency = cardStyle and 0 or 1
+		row.BackgroundColor3 = cardStyle and COLORS.panel or COLORS.bg
 		row.BorderSizePixel = 0
 		row.Text = ""
 		row.AutoButtonColor = false
 		row.LayoutOrder = layoutOrder or 0
 		row.Parent = parent
+		if cardStyle then
+			addCorner(row, 8)
+		end
 
 		local name = Instance.new("TextLabel")
 		name.Size = UDim2.new(1, -54, 1, 0)
-		name.Position = UDim2.new(0, 4, 0, 0)
+		name.Position = UDim2.new(0, cardStyle and 12 or 4, 0, 0)
 		name.BackgroundTransparency = 1
 		name.Font = Enum.Font.Gotham
 		name.TextSize = 12
@@ -701,7 +888,7 @@ function MaxiHubUI.create(config)
 	addCorner(sidebar, 10)
 
 	local sideTop = Instance.new("Frame")
-	sideTop.Size = UDim2.new(1, 0, 1, -98)
+	sideTop.Size = UDim2.new(1, 0, 1, -110)
 	sideTop.BackgroundTransparency = 1
 	sideTop.Parent = sidebar
 
@@ -715,8 +902,8 @@ function MaxiHubUI.create(config)
 	sidePad.Parent = sideTop
 
 	local userCard = Instance.new("Frame")
-	userCard.Size = UDim2.new(1, -12, 0, 92)
-	userCard.Position = UDim2.new(0, 6, 1, -98)
+	userCard.Size = UDim2.new(1, -12, 0, 104)
+	userCard.Position = UDim2.new(0, 6, 1, -110)
 	userCard.BackgroundColor3 = COLORS.card
 	userCard.BorderSizePixel = 0
 	userCard.Parent = sidebar
@@ -763,7 +950,7 @@ function MaxiHubUI.create(config)
 	end
 
 	local userKey = Instance.new("TextLabel")
-	userKey.Size = UDim2.new(1, -54, 0, 24)
+	userKey.Size = UDim2.new(1, -54, 0, 22)
 	userKey.Position = UDim2.new(0, 50, 0, 42)
 	userKey.BackgroundTransparency = 1
 	userKey.Font = Enum.Font.Gotham
@@ -782,9 +969,22 @@ function MaxiHubUI.create(config)
 	else
 		userKey.Visible = false
 		userKeyCaption.Visible = false
-		userName.Position = UDim2.new(0, 50, 0.5, -9)
+		userName.Position = UDim2.new(0, 50, 0, 16)
 	end
 	userKey.Parent = userCard
+
+	local userVersion = Instance.new("TextLabel")
+	userVersion.Size = UDim2.new(1, -54, 0, 14)
+	userVersion.Position = UDim2.new(0, 50, 1, -18)
+	userVersion.BackgroundTransparency = 1
+	userVersion.Font = Enum.Font.GothamBold
+	userVersion.TextSize = 9
+	userVersion.TextColor3 = COLORS.accent
+	userVersion.TextXAlignment = Enum.TextXAlignment.Left
+	userVersion.TextYAlignment = Enum.TextYAlignment.Bottom
+	userVersion.Text = versionText
+	userVersion.Visible = versionText ~= ""
+	userVersion.Parent = userCard
 
 	task.spawn(function()
 		local ok, thumb = pcall(function()
@@ -900,6 +1100,9 @@ function MaxiHubUI.create(config)
 		makeFlowPanel = makeFlowPanel,
 		makeStatRow = makeStatRow,
 		makeFlowToggle = makeFlowToggle,
+		makeFlowSlider = makeFlowSlider,
+		makeCollapsibleSection = makeCollapsibleSection,
+		isMobile = function() return mobileMode end,
 		makeDraggable = makeDraggable,
 	}
 
@@ -1050,7 +1253,7 @@ function MaxiHubUI.create(config)
 		genv._MaxiHubInputConn[guiName] = UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			if gameProcessed then return end
 
-			if input.KeyCode == Enum.KeyCode.RightControl then
+			if not mobileMode and input.KeyCode == Enum.KeyCode.RightControl then
 				local willHide = uiRoot.Visible
 				uiRoot.Visible = not uiRoot.Visible
 				if willHide then
@@ -1065,6 +1268,42 @@ function MaxiHubUI.create(config)
 		end)
 
 		switchTab(1)
+
+		if mobileMode then
+			local dock = Instance.new("Frame")
+			dock.Size = UDim2.new(0, 132, 0, 44)
+			dock.Position = UDim2.new(0.5, -66, 1, -58)
+			dock.BackgroundTransparency = 1
+			dock.Parent = screenGui
+
+			local function mobileBtn(text, x, cb)
+				local b = Instance.new("TextButton")
+				b.Size = UDim2.new(0, 60, 0, 40)
+				b.Position = UDim2.new(0, x, 0, 0)
+				b.BackgroundColor3 = COLORS.panel
+				b.BorderSizePixel = 0
+				b.Font = Enum.Font.GothamBold
+				b.TextSize = 11
+				b.TextColor3 = COLORS.text
+				b.Text = text
+				b.AutoButtonColor = false
+				b.Parent = dock
+				addCorner(b, 10)
+				b.MouseButton1Click:Connect(function()
+					if cb then cb() end
+				end)
+				return b
+			end
+
+			mobileBtn(config.mobileStopText or "Стоп", 0, onMobileFarmStop)
+			mobileBtn(config.mobileMenuText or "Меню", 72, function()
+				if typeof(onMobileMenuToggle) == "function" then
+					onMobileMenuToggle()
+				else
+					uiRoot.Visible = not uiRoot.Visible
+				end
+			end)
+		end
 	end
 
 	function ui.onInputBegan(handler)
@@ -1082,6 +1321,13 @@ function MaxiHubUI.create(config)
 	function ui.setTitleHint(text)
 		if titleHint then
 			titleHint.Text = text or ""
+		end
+	end
+
+	function ui.setVersion(text)
+		if userVersion then
+			userVersion.Text = text or ""
+			userVersion.Visible = text ~= nil and text ~= ""
 		end
 	end
 

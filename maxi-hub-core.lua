@@ -1,5 +1,6 @@
 -- MAXI HUB core (auto-loaded by launcher.lua)
 SCRIPT_TITLE = "🔰MAXI HUB"
+SCRIPT_VERSION = "v2.2"
 GUI_NAME = "MaxiHub"
 TELEGRAM_LINK = "https://t.me/MAXI_HUB"
 
@@ -12,6 +13,7 @@ TweenService = game:GetService("TweenService")
 ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 CONFIG_FILE = "maxi-hub-config.json"
+CONFIG_VERSION = 2
 SELL_STATE_FILE = "maxi-hub-sell-state.json"
 UiLanguage = "ru"
 LocaleLib = nil
@@ -141,10 +143,20 @@ VK_F = 0x46
 
 UseFKey = true
 UseClick = true
+LegitMouseCapture = false
 OrbitEnabled = false
 AimAtTarget = true
-BlockUiDuringFarm = true
+BlockUiDuringFarm = false
 BlockTrades = true
+Render3dDisabled = false
+AutoRender3dOnFarm = true
+BlackScreenOverlay = true
+render3dBeforeFarm = nil
+render3dFarmActive = false
+render3dFarmNeedsRestore = false
+blackScreenGui = nil
+setRender3dToggle = nil
+render3dToggleSilent = false
 HubWaitEnabled = true
 AutoStartFarm = false
 RejoinAutoLoad = false
@@ -169,6 +181,36 @@ lastWarningAt = {}
 sessionTreeDrops = 0
 OrbitDiameter = 14
 OrbitSpeed = 1.1
+FarmTreesEnabled = true
+FarmStonesEnabled = true
+TargetPickMode = "nearest"
+TeleportMode = "instant"
+TeleportStepSize = 12
+TeleportStepDelay = 0.06
+AttackDelay = 0.15
+DEFAULT_ZONE_SIZE = 50
+BlockedZonesList = {}
+EspEnabled = false
+EspTrees = true
+EspStones = true
+EspPlayers = false
+EspResources = true
+EspDragons = true
+EspTracers = true
+EspNames = true
+EspTextSize = 14
+EspColors = {
+	trees = { 0, 198, 178 },
+	stones = { 140, 180, 255 },
+	players = { 255, 220, 80 },
+	resources = { 160, 160, 255 },
+	dragons = { 255, 140, 60 },
+	tracer = { 0, 198, 178 },
+}
+lastAttackAt = 0
+MaxiHubESPLib = nil
+zoneListLabel = nil
+zonesListContainer = nil
 DEFAULT_UI_POS = UDim2.new(0, 16, 0.5, -270)
 savedUiPos = nil
 screenGuiRef = nil
@@ -182,6 +224,127 @@ orbitAngle = 0
 mouseHeld = false
 holdMouseX, holdMouseY = 0, 0
 
+function ensureBlackScreenGui()
+	if blackScreenGui and blackScreenGui.Parent then return end
+	if not playerGui then return end
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "MaxiHubBlackScreen"
+	gui:SetAttribute("MaxiHubBlackScreen", true)
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	gui.DisplayOrder = 999998
+	gui.Enabled = false
+	gui.Parent = playerGui
+
+	local frame = Instance.new("Frame")
+	frame.Name = "Overlay"
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.Position = UDim2.fromScale(0, 0)
+	frame.BackgroundColor3 = Color3.new(0, 0, 0)
+	frame.BackgroundTransparency = 0
+	frame.BorderSizePixel = 0
+	frame.ZIndex = 1
+	frame.Parent = gui
+
+	blackScreenGui = gui
+end
+
+function updateBlackScreenOverlay()
+	local shouldShow = Render3dDisabled and BlackScreenOverlay
+	if shouldShow then
+		ensureBlackScreenGui()
+		if blackScreenGui then
+			blackScreenGui.Enabled = true
+		end
+	else
+		if blackScreenGui then
+			blackScreenGui.Enabled = false
+		end
+		for _, child in ipairs(playerGui and playerGui:GetChildren() or {}) do
+			if child:IsA("ScreenGui") and child:GetAttribute("MaxiHubBlackScreen") == true then
+				child.Enabled = false
+			end
+		end
+	end
+end
+
+function applyRender3dState(disabled, opts)
+	opts = opts or {}
+	Render3dDisabled = disabled == true
+	_G.rndr_dis = Render3dDisabled
+	genv.rndr_dis = Render3dDisabled
+
+	pcall(function()
+		RunService:Set3dRenderingEnabled(not Render3dDisabled)
+	end)
+	updateBlackScreenOverlay()
+
+	if setRender3dToggle then
+		render3dToggleSilent = true
+		setRender3dToggle(Render3dDisabled, true)
+		render3dToggleSilent = false
+	end
+
+	if not opts.skipSave then
+		scheduleSaveConfig()
+	end
+end
+
+function toggleRender3d()
+	applyRender3dState(not Render3dDisabled)
+end
+
+function onFarmRender3dStart()
+	if not AutoRender3dOnFarm or render3dFarmActive then return end
+
+	render3dFarmActive = true
+	render3dFarmNeedsRestore = not Render3dDisabled
+	applyRender3dState(true, { silent = true, skipSave = true })
+end
+
+function onFarmRender3dStop()
+	if not render3dFarmActive then return end
+
+	render3dFarmActive = false
+	local needsRestore = render3dFarmNeedsRestore
+	render3dFarmNeedsRestore = false
+	render3dBeforeFarm = nil
+
+	if needsRestore then
+		applyRender3dState(false, { silent = true, skipSave = true })
+	else
+		pcall(function()
+			RunService:Set3dRenderingEnabled(false)
+		end)
+		Render3dDisabled = true
+		_G.rndr_dis = true
+		genv.rndr_dis = true
+		updateBlackScreenOverlay()
+		if setRender3dToggle then
+			render3dToggleSilent = true
+			setRender3dToggle(true, true)
+			render3dToggleSilent = false
+		end
+	end
+end
+
+function cleanupRender3d()
+	render3dBeforeFarm = nil
+	render3dFarmActive = false
+	render3dFarmNeedsRestore = false
+	pcall(function()
+		RunService:Set3dRenderingEnabled(true)
+	end)
+	_G.rndr_dis = false
+	genv.rndr_dis = false
+	if blackScreenGui then
+		pcall(function() blackScreenGui:Destroy() end)
+		blackScreenGui = nil
+	end
+end
+
 function canUseConfigFile()
 	return typeof(writefile) == "function"
 		and typeof(readfile) == "function"
@@ -189,31 +352,136 @@ function canUseConfigFile()
 end
 
 saveConfigScheduled = false
+saveConfigToken = 0
 mainFrameRef = nil
 
-function saveConfig()
-	if not canUseConfigFile() then return end
+function readConfigTable()
+	if not canUseConfigFile() or not isfile(CONFIG_FILE) then
+		return {}
+	end
+	local ok, data = pcall(function()
+		return HttpService:JSONDecode(readfile(CONFIG_FILE))
+	end)
+	if ok and typeof(data) == "table" then
+		return data
+	end
+	return {}
+end
+
+function writeConfigTable(data)
+	if not canUseConfigFile() or typeof(data) ~= "table" then
+		return false
+	end
+	local ok, json = pcall(function()
+		return HttpService:JSONEncode(data)
+	end)
+	if not ok then
+		warn("[MAXI HUB] Ошибка JSON:", json)
+		return false
+	end
+	local wrote = false
+	pcall(function()
+		writefile(CONFIG_FILE, json)
+		wrote = true
+	end)
+	return wrote
+end
+
+function serializeEspColors(colors)
+	if type(colors) ~= "table" then return nil end
+	local out = {}
+	for key, rgb in pairs(colors) do
+		if type(key) == "string" and type(rgb) == "table" and #rgb >= 3 then
+			out[key] = {
+				math.clamp(math.floor(rgb[1] or 0), 0, 255),
+				math.clamp(math.floor(rgb[2] or 0), 0, 255),
+				math.clamp(math.floor(rgb[3] or 0), 0, 255),
+			}
+		end
+	end
+	return out
+end
+
+function serializeBlockedZonesList()
+	local out = {}
+	if type(BlockedZonesList) ~= "table" then return out end
+	for i, zone in ipairs(BlockedZonesList) do
+		if type(zone) == "table" and type(zone.center) == "table" and #zone.center >= 3 then
+			table.insert(out, {
+				name = type(zone.name) == "string" and zone.name or (L("zone_default_name") .. " " .. i),
+				center = {
+					tonumber(zone.center[1]) or 0,
+					tonumber(zone.center[2]) or 0,
+					tonumber(zone.center[3]) or 0,
+				},
+				size = math.clamp(math.floor(zone.size or DEFAULT_ZONE_SIZE), 20, 120),
+				enabled = zone.enabled ~= false,
+			})
+		end
+	end
+	return out
+end
+
+function deserializeBlockedZonesList(raw)
+	local out = {}
+	if type(raw) ~= "table" then return out end
+	for i, zone in ipairs(raw) do
+		if type(zone) == "table" and type(zone.center) == "table" and #zone.center >= 3 then
+			table.insert(out, {
+				name = type(zone.name) == "string" and zone.name or "",
+				center = {
+					tonumber(zone.center[1]) or 0,
+					tonumber(zone.center[2]) or 0,
+					tonumber(zone.center[3]) or 0,
+				},
+				size = math.clamp(math.floor(zone.size or DEFAULT_ZONE_SIZE), 20, 120),
+				enabled = zone.enabled ~= false,
+			})
+		end
+	end
+	return out
+end
+
+function buildConfigPayload()
 	local payload = {
+		ConfigVersion = CONFIG_VERSION,
 		TeleportHeight = TeleportHeight,
 		StoneTeleportHeight = StoneTeleportHeight,
 		UseFKey = UseFKey,
 		UseClick = UseClick,
+		LegitMouseCapture = LegitMouseCapture,
 		OrbitEnabled = OrbitEnabled,
 		AimAtTarget = AimAtTarget,
 		OrbitSpeed = OrbitSpeed,
 		OrbitDiameter = OrbitDiameter,
+		FarmTreesEnabled = FarmTreesEnabled,
+		FarmStonesEnabled = FarmStonesEnabled,
+		TargetPickMode = TargetPickMode,
+		TeleportMode = TeleportMode,
+		TeleportStepSize = TeleportStepSize,
+		TeleportStepDelay = TeleportStepDelay,
+		AttackDelay = AttackDelay,
+		BlockedZonesList = serializeBlockedZonesList(),
+		EspEnabled = EspEnabled,
+		EspTrees = EspTrees,
+		EspStones = EspStones,
+		EspPlayers = EspPlayers,
+		EspResources = EspResources,
+		EspDragons = EspDragons,
+		EspTracers = EspTracers,
+		EspNames = EspNames,
+		EspTextSize = EspTextSize,
+		EspColors = serializeEspColors(EspColors),
 		BlockUiDuringFarm = BlockUiDuringFarm,
 		BlockTrades = BlockTrades,
+		Render3dDisabled = Render3dDisabled,
+		AutoRender3dOnFarm = AutoRender3dOnFarm,
+		BlackScreenOverlay = BlackScreenOverlay,
 		HubWaitEnabled = HubWaitEnabled,
 		AutoStartFarm = AutoStartFarm,
 		RejoinAutoLoad = RejoinAutoLoad,
 		BlockedZonesEnabled = BlockedZonesEnabled,
 		BlockedZoneSize = BlockedZoneSize,
-		BlockedZoneCenter = BlockedZoneCenter and {
-			BlockedZoneCenter.X,
-			BlockedZoneCenter.Y,
-			BlockedZoneCenter.Z,
-		} or nil,
 		AutoSellEnabled = AutoSellEnabled,
 		SellCheckInterval = SellCheckInterval,
 		UserDiscordWebhook = UserDiscordWebhook,
@@ -223,28 +491,55 @@ function saveConfig()
 		DiscordLogOnStop = DiscordLogOnStop,
 		UiLanguage = UiLanguage,
 	}
-	if mainFrameRef then
+	if mainFrameRef and mainFrameRef.Parent then
 		local p = mainFrameRef.Position
 		payload.UiXScale = p.X.Scale
 		payload.UiXOffset = p.X.Offset
 		payload.UiYScale = p.Y.Scale
 		payload.UiYOffset = p.Y.Offset
 	end
-	local ok, json = pcall(function()
-		return HttpService:JSONEncode(payload)
-	end)
-	if ok then
-		pcall(function() writefile(CONFIG_FILE, json) end)
+	return payload
+end
+
+function saveConfig()
+	if not canUseConfigFile() then return end
+	local payload = buildConfigPayload()
+	local merged = readConfigTable()
+	for key, value in pairs(payload) do
+		merged[key] = value
 	end
+	writeConfigTable(merged)
+end
+
+function patchConfigTable(patch)
+	if not canUseConfigFile() or typeof(patch) ~= "table" then return end
+	local merged = readConfigTable()
+	for key, value in pairs(patch) do
+		merged[key] = value
+	end
+	writeConfigTable(merged)
 end
 
 function scheduleSaveConfig()
+	saveConfigToken += 1
+	local token = saveConfigToken
 	if saveConfigScheduled then return end
 	saveConfigScheduled = true
 	task.delay(0.25, function()
+		if token ~= saveConfigToken then
+			saveConfigScheduled = false
+			scheduleSaveConfig()
+			return
+		end
 		saveConfigScheduled = false
 		saveConfig()
 	end)
+end
+
+function flushSaveConfig()
+	saveConfigToken += 1
+	saveConfigScheduled = false
+	saveConfig()
 end
 
 function loadSellState()
@@ -408,12 +703,49 @@ function loadConfig()
 	if typeof(data.StoneTeleportHeight) == "number" then StoneTeleportHeight = data.StoneTeleportHeight end
 	if data.UseFKey ~= nil then UseFKey = data.UseFKey end
 	if data.UseClick ~= nil then UseClick = data.UseClick end
+	if data.LegitMouseCapture ~= nil then LegitMouseCapture = data.LegitMouseCapture end
 	if data.OrbitEnabled ~= nil then OrbitEnabled = data.OrbitEnabled end
 	if data.AimAtTarget ~= nil then AimAtTarget = data.AimAtTarget end
 	if typeof(data.OrbitSpeed) == "number" then OrbitSpeed = data.OrbitSpeed end
 	if typeof(data.OrbitDiameter) == "number" then OrbitDiameter = data.OrbitDiameter end
+	if data.FarmTreesEnabled ~= nil then FarmTreesEnabled = data.FarmTreesEnabled end
+	if data.FarmStonesEnabled ~= nil then FarmStonesEnabled = data.FarmStonesEnabled end
+	if data.TargetPickMode == "random" or data.TargetPickMode == "nearest" then TargetPickMode = data.TargetPickMode end
+	if data.TeleportMode == "smooth" or data.TeleportMode == "instant" then TeleportMode = data.TeleportMode end
+	if typeof(data.TeleportStepSize) == "number" then
+		TeleportStepSize = math.clamp(math.floor(data.TeleportStepSize), 2, 40)
+	end
+	if typeof(data.TeleportStepDelay) == "number" then
+		TeleportStepDelay = math.clamp(data.TeleportStepDelay, 0.02, 0.5)
+	elseif typeof(data.TeleportSmoothSpeed) == "number" then
+		TeleportStepDelay = math.clamp(0.15 / data.TeleportSmoothSpeed, 0.02, 0.5)
+	end
+	if typeof(data.AttackDelay) == "number" then AttackDelay = data.AttackDelay end
+	if typeof(data.BlockedZonesList) == "table" then
+		BlockedZonesList = deserializeBlockedZonesList(data.BlockedZonesList)
+	end
+	normalizeBlockedZonesList()
+	if typeof(data.EspColors) == "table" then
+		EspColors = serializeEspColors(data.EspColors) or EspColors
+	end
+	if data.EspEnabled ~= nil then EspEnabled = data.EspEnabled end
+	if data.EspTrees ~= nil then EspTrees = data.EspTrees end
+	if data.EspStones ~= nil then EspStones = data.EspStones end
+	if data.EspPlayers ~= nil then EspPlayers = data.EspPlayers end
+	if data.EspResources ~= nil then EspResources = data.EspResources end
+	if data.EspDragons ~= nil then EspDragons = data.EspDragons end
+	if data.EspTracers ~= nil then EspTracers = data.EspTracers end
+	if data.EspNames ~= nil then EspNames = data.EspNames end
+	if typeof(data.EspTextSize) == "number" then EspTextSize = data.EspTextSize end
 	if data.BlockUiDuringFarm ~= nil then BlockUiDuringFarm = data.BlockUiDuringFarm end
 	if data.BlockTrades ~= nil then BlockTrades = data.BlockTrades end
+	if data.Render3dDisabled ~= nil then
+		Render3dDisabled = data.Render3dDisabled
+	elseif _G.rndr_dis ~= nil then
+		Render3dDisabled = _G.rndr_dis == true
+	end
+	if data.AutoRender3dOnFarm ~= nil then AutoRender3dOnFarm = data.AutoRender3dOnFarm end
+	if data.BlackScreenOverlay ~= nil then BlackScreenOverlay = data.BlackScreenOverlay end
 	if data.HubWaitEnabled ~= nil then HubWaitEnabled = data.HubWaitEnabled end
 	if data.AutoStartFarm ~= nil then AutoStartFarm = data.AutoStartFarm end
 	if data.RejoinAutoLoad ~= nil then RejoinAutoLoad = data.RejoinAutoLoad end
@@ -422,6 +754,20 @@ function loadConfig()
 		BlockedZoneSize = math.clamp(math.floor(data.BlockedZoneSize), 20, 120)
 	end
 	if typeof(data.BlockedZoneCenter) == "table" and #data.BlockedZoneCenter >= 3 then
+		if type(BlockedZonesList) ~= "table" or #BlockedZonesList == 0 then
+			BlockedZonesList = {
+				{
+					center = {
+						data.BlockedZoneCenter[1],
+						data.BlockedZoneCenter[2],
+						data.BlockedZoneCenter[3],
+					},
+					size = BlockedZoneSize or DEFAULT_ZONE_SIZE,
+					enabled = true,
+					name = L("zone_default_name") .. " 1",
+				},
+			}
+		end
 		BlockedZoneCenter = Vector3.new(
 			data.BlockedZoneCenter[1],
 			data.BlockedZoneCenter[2],
@@ -441,12 +787,15 @@ function loadConfig()
 	if typeof(data.UiLanguage) == "string" then
 		UiLanguage = data.UiLanguage:lower() == "en" and "en" or "ru"
 	end
-	if typeof(data.UiYScale) == "number" then
+	if typeof(data.UiXScale) == "number"
+		or typeof(data.UiXOffset) == "number"
+		or typeof(data.UiYScale) == "number"
+		or typeof(data.UiYOffset) == "number" then
 		savedUiPos = UDim2.new(
-			data.UiXScale or 0,
-			data.UiXOffset or 16,
-			data.UiYScale,
-			data.UiYOffset or 0
+			typeof(data.UiXScale) == "number" and data.UiXScale or 0,
+			typeof(data.UiXOffset) == "number" and data.UiXOffset or 16,
+			typeof(data.UiYScale) == "number" and data.UiYScale or 0.5,
+			typeof(data.UiYOffset) == "number" and data.UiYOffset or -270
 		)
 	end
 end
@@ -483,6 +832,15 @@ function getTeleportHeightForKind(kind)
 end
 
 function getFarmModeText()
+	if not FarmTreesEnabled and not FarmStonesEnabled then
+		return L("mode_search")
+	end
+	if cachedTreeCount > 0 and not cachedStoneCount then
+		return L("mode_trees")
+	end
+	if cachedStoneCount > 0 and not cachedTreeCount then
+		return L("mode_stones")
+	end
 	if cachedTreeCount > 0 then
 		return L("mode_trees")
 	end
@@ -531,13 +889,89 @@ PHASE_TEXT = {
 	collect = "сбор",
 	sell = "продажа",
 	hub = "центр",
+	travel = "путь к ноде",
 }
+
+function getWorkspaceModulePaths(fileName)
+	local paths = {}
+	local genv = typeof(getgenv) == "function" and getgenv() or _G
+	if type(genv.MaxiHubLocalRoot) == "string" and genv.MaxiHubLocalRoot ~= "" then
+		table.insert(paths, genv.MaxiHubLocalRoot .. "/" .. fileName)
+	end
+	table.insert(paths, "maxi-hub/" .. fileName)
+	table.insert(paths, fileName)
+	return paths
+end
+
+function loadEspLib()
+	if MaxiHubESPLib then
+		return MaxiHubESPLib
+	end
+	local paths = getWorkspaceModulePaths("maxi-hub-esp.lua")
+	if typeof(readfile) == "function" and typeof(isfile) == "function" then
+		for _, path in ipairs(paths) do
+			if isfile(path) then
+				local chunk = loadstring(readfile(path), "@maxi-hub-esp.lua")
+				if chunk then
+					local ok, lib = pcall(chunk)
+					if ok and type(lib) == "table" then
+						MaxiHubESPLib = lib
+						return MaxiHubESPLib
+					end
+				end
+			end
+		end
+	end
+	return nil
+end
+
+MaxiHubChangelog = nil
+
+function loadChangelogLib()
+	if MaxiHubChangelog then
+		return MaxiHubChangelog
+	end
+	local paths = getWorkspaceModulePaths("maxi-hub-changelog.lua")
+	if typeof(readfile) == "function" and typeof(isfile) == "function" then
+		for _, path in ipairs(paths) do
+			if isfile(path) then
+				local chunk = loadstring(readfile(path), "@maxi-hub-changelog.lua")
+				if chunk then
+					local ok, lib = pcall(chunk)
+					if ok and type(lib) == "table" then
+						MaxiHubChangelog = lib
+						return MaxiHubChangelog
+					end
+				end
+			end
+		end
+	end
+	return nil
+end
+
+function refreshEsp()
+	loadEspLib()
+	if MaxiHubESPLib and typeof(MaxiHubESPLib.refresh) == "function" then
+		MaxiHubESPLib.refresh({
+			enabled = EspEnabled,
+			EspTrees = EspTrees,
+			EspStones = EspStones,
+			EspPlayers = EspPlayers,
+			EspResources = EspResources,
+			EspDragons = EspDragons,
+			EspTracers = EspTracers,
+			EspNames = EspNames,
+			EspTextSize = EspTextSize,
+			EspColors = EspColors,
+		})
+	end
+end
 
 function loadLocaleLib()
 	if LocaleLib then
 		return LocaleLib
 	end
-	local paths = { "maxi-hub/maxi-hub-locale.lua", "maxi-hub-locale.lua" }
+	local paths = getWorkspaceModulePaths("maxi-hub-locale.lua")
 	if typeof(readfile) == "function" and typeof(isfile) == "function" then
 		for _, path in ipairs(paths) do
 			if isfile(path) then
@@ -573,6 +1007,8 @@ function getTabDefs()
 		{ name = L("tab_home"), title = L("tab_home"), subtitle = L("tab_home_sub") },
 		{ name = L("tab_settings"), title = L("tab_settings"), subtitle = L("tab_settings_sub") },
 		{ name = L("tab_discord"), title = L("tab_discord"), subtitle = L("tab_discord_sub") },
+		{ name = L("tab_esp"), title = L("tab_esp"), subtitle = L("tab_esp_sub") },
+		{ name = L("tab_changelog"), title = L("tab_changelog"), subtitle = L("tab_changelog_sub") },
 		{ name = L("tab_credits"), title = L("tab_credits"), subtitle = L("tab_credits_sub") },
 	}
 end
@@ -586,6 +1022,7 @@ function refreshPhaseText()
 		collect = L("phase_collect"),
 		sell = L("phase_sell"),
 		hub = L("phase_hub"),
+		travel = L("phase_travel"),
 	}
 end
 
@@ -706,13 +1143,197 @@ function getBlockedZoneMinMax()
 	return BlockedZoneCenter - Vector3.new(h, h, h), BlockedZoneCenter + Vector3.new(h, h, h)
 end
 
+function normalizeBlockedZone(zone, index)
+	if type(zone) ~= "table" then return nil end
+	zone.size = math.clamp(math.floor(zone.size or DEFAULT_ZONE_SIZE), 20, 120)
+	if zone.enabled == nil then zone.enabled = true end
+	if type(zone.name) ~= "string" or zone.name == "" then
+		zone.name = L("zone_default_name") .. " " .. tostring(index)
+	end
+	return zone
+end
+
+function normalizeBlockedZonesList()
+	BlockedZonesList = BlockedZonesList or {}
+	for i, zone in ipairs(BlockedZonesList) do
+		normalizeBlockedZone(zone, i)
+	end
+end
+
 function isPosInBlockedZone(pos)
-	if not BlockedZonesEnabled or not pos or not BlockedZoneCenter then return false end
+	if not BlockedZonesEnabled or not pos then return false end
+	if type(BlockedZonesList) == "table" and #BlockedZonesList > 0 then
+		for _, zone in ipairs(BlockedZonesList) do
+			if zone.enabled == false then continue end
+			local center = zone.center
+			local size = zone.size or DEFAULT_ZONE_SIZE
+			if type(center) == "table" and #center >= 3 then
+				local half = size / 2
+				local c = Vector3.new(center[1], center[2], center[3])
+				local mn = c - Vector3.new(half, half, half)
+				local mx = c + Vector3.new(half, half, half)
+				if pos.X >= mn.X and pos.X <= mx.X
+					and pos.Y >= mn.Y and pos.Y <= mx.Y
+					and pos.Z >= mn.Z and pos.Z <= mx.Z then
+					return true
+				end
+			end
+		end
+		return false
+	end
+	if not BlockedZoneCenter then return false end
 	local mn, mx = getBlockedZoneMinMax()
 	if not mn or not mx then return false end
 	return pos.X >= mn.X and pos.X <= mx.X
 		and pos.Y >= mn.Y and pos.Y <= mx.Y
 		and pos.Z >= mn.Z and pos.Z <= mx.Z
+end
+
+function removeBlockedZone(index)
+	if not BlockedZonesList[index] then return end
+	table.remove(BlockedZonesList, index)
+	if #BlockedZonesList == 0 then
+		BlockedZoneCenter = nil
+	end
+	updateBlockedZoneVisual()
+	rebuildZonesListUI()
+	scheduleSaveConfig()
+end
+
+function addBlockedZoneAtPlayer()
+	local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return false end
+	BlockedZonesList = BlockedZonesList or {}
+	local idx = #BlockedZonesList + 1
+	table.insert(BlockedZonesList, {
+		center = { hrp.Position.X, hrp.Position.Y, hrp.Position.Z },
+		size = DEFAULT_ZONE_SIZE,
+		enabled = true,
+		name = L("zone_default_name") .. " " .. tostring(idx),
+	})
+	BlockedZoneCenter = hrp.Position
+	updateBlockedZoneVisual()
+	rebuildZonesListUI()
+	scheduleSaveConfig()
+	return true
+end
+
+function clearBlockedZones()
+	BlockedZonesList = {}
+	BlockedZoneCenter = nil
+	updateBlockedZoneVisual()
+	rebuildZonesListUI()
+	scheduleSaveConfig()
+end
+
+function createZoneCard(parent, index, zone)
+	local card = Instance.new("Frame")
+	card.Name = "ZoneCard_" .. index
+	card.Size = UDim2.new(1, 0, 0, 96)
+	card.BackgroundColor3 = COLORS.panel
+	card.BorderSizePixel = 0
+	card.LayoutOrder = index
+	card.Parent = parent
+	addCorner(card, 8)
+
+	local nameBox = Instance.new("TextBox")
+	nameBox.Size = UDim2.new(1, -118, 0, 26)
+	nameBox.Position = UDim2.new(0, 10, 0, 8)
+	nameBox.BackgroundColor3 = COLORS.card
+	nameBox.BorderSizePixel = 0
+	nameBox.ClearTextOnFocus = false
+	nameBox.Font = Enum.Font.GothamBold
+	nameBox.TextSize = 11
+	nameBox.TextColor3 = COLORS.text
+	nameBox.PlaceholderText = L("zone_name_placeholder")
+	nameBox.Text = zone.name or ""
+	nameBox.TextXAlignment = Enum.TextXAlignment.Left
+	nameBox.Parent = card
+	addCorner(nameBox, 6)
+
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0, 8)
+	pad.Parent = nameBox
+
+	local enabledTrack = Instance.new("TextButton")
+	enabledTrack.Size = UDim2.new(0, 40, 0, 22)
+	enabledTrack.Position = UDim2.new(1, -96, 0, 10)
+	enabledTrack.BackgroundColor3 = zone.enabled ~= false and COLORS.accent or COLORS.toggleOff
+	enabledTrack.BorderSizePixel = 0
+	enabledTrack.Text = ""
+	enabledTrack.AutoButtonColor = false
+	enabledTrack.Parent = card
+	addCorner(enabledTrack, 11)
+
+	local enabledKnob = Instance.new("Frame")
+	enabledKnob.Size = UDim2.new(0, 16, 0, 16)
+	enabledKnob.Position = zone.enabled ~= false and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
+	enabledKnob.BackgroundColor3 = COLORS.text
+	enabledKnob.BorderSizePixel = 0
+	enabledKnob.Parent = enabledTrack
+	addCorner(enabledKnob, 8)
+
+	local function paintEnabled()
+		local on = zone.enabled ~= false
+		enabledTrack.BackgroundColor3 = on and COLORS.accent or COLORS.toggleOff
+		TweenService:Create(enabledKnob, TweenInfo.new(0.12), {
+			Position = on and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 3, 0.5, -8),
+		}):Play()
+	end
+
+	enabledTrack.MouseButton1Click:Connect(function()
+		zone.enabled = zone.enabled == false
+		paintEnabled()
+		updateBlockedZoneVisual()
+		scheduleSaveConfig()
+	end)
+
+	local deleteBtn = Instance.new("TextButton")
+	deleteBtn.Size = UDim2.new(0, 40, 0, 26)
+	deleteBtn.Position = UDim2.new(1, -48, 0, 8)
+	deleteBtn.BackgroundColor3 = COLORS.card
+	deleteBtn.BorderSizePixel = 0
+	deleteBtn.Font = Enum.Font.GothamBold
+	deleteBtn.TextSize = 14
+	deleteBtn.TextColor3 = COLORS.red
+	deleteBtn.Text = "×"
+	deleteBtn.AutoButtonColor = false
+	deleteBtn.Parent = card
+	addCorner(deleteBtn, 6)
+	deleteBtn.MouseButton1Click:Connect(function()
+		removeBlockedZone(index)
+	end)
+
+	nameBox.FocusLost:Connect(function()
+		local text = nameBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
+		zone.name = text ~= "" and text or (L("zone_default_name") .. " " .. tostring(index))
+		nameBox.Text = zone.name
+		scheduleSaveConfig()
+	end)
+
+	local sizeWrap = Instance.new("Frame")
+	sizeWrap.Size = UDim2.new(1, -20, 0, 52)
+	sizeWrap.Position = UDim2.new(0, 10, 0, 40)
+	sizeWrap.BackgroundTransparency = 1
+	sizeWrap.Parent = card
+	makeSlider(sizeWrap, 0, L("slider_cube_size"), 20, 120, zone.size or DEFAULT_ZONE_SIZE, function(v)
+		zone.size = math.floor(v)
+		updateBlockedZoneVisual()
+		scheduleSaveConfig()
+	end, "slider_cube_size")
+end
+
+function rebuildZonesListUI()
+	if not zonesListContainer then return end
+	for _, child in ipairs(zonesListContainer:GetChildren()) do
+		if not child:IsA("UIListLayout") then
+			child:Destroy()
+		end
+	end
+	normalizeBlockedZonesList()
+	for i, zone in ipairs(BlockedZonesList) do
+		createZoneCard(zonesListContainer, i, zone)
+	end
 end
 
 function isNodeInBlockedZone(node)
@@ -742,47 +1363,114 @@ function destroyBlockedZoneVisual()
 end
 
 function updateBlockedZoneVisual()
-	if not BlockedZonesEnabled or not BlockedZoneCenter then
+	if not BlockedZonesEnabled then
 		destroyBlockedZoneVisual()
 		return
 	end
 
 	local folder = ensureBlockedZoneFolder()
-	if not blockedZoneVisualPart or not blockedZoneVisualPart.Parent then
-		blockedZoneVisualPart = Instance.new("Part")
-		blockedZoneVisualPart.Name = "AntiTPZone"
-		blockedZoneVisualPart.Anchored = true
-		blockedZoneVisualPart.CanCollide = false
-		blockedZoneVisualPart.CanQuery = false
-		blockedZoneVisualPart.CanTouch = false
-		blockedZoneVisualPart.CastShadow = false
-		blockedZoneVisualPart.Material = Enum.Material.ForceField
-		blockedZoneVisualPart.Color = Color3.fromRGB(255, 70, 70)
-		blockedZoneVisualPart.Transparency = 0.72
-		blockedZoneVisualPart.Parent = folder
+	destroyBlockedZoneVisual()
+	folder = ensureBlockedZoneFolder()
+
+	if type(BlockedZonesList) == "table" and #BlockedZonesList > 0 then
+		for i, zone in ipairs(BlockedZonesList) do
+			local center = zone.center
+			local size = zone.size or DEFAULT_ZONE_SIZE
+			local enabled = zone.enabled ~= false
+			if type(center) == "table" and #center >= 3 then
+				local part = Instance.new("Part")
+				part.Name = "AntiTPZone_" .. i
+				part.Anchored = true
+				part.CanCollide = false
+				part.CanQuery = false
+				part.CanTouch = false
+				part.CastShadow = false
+				part.Material = Enum.Material.ForceField
+				part.Color = enabled and Color3.fromRGB(255, 70, 70) or Color3.fromRGB(130, 130, 130)
+				part.Transparency = enabled and 0.72 or 0.88
+				part.Size = Vector3.new(size, size, size)
+				part.CFrame = CFrame.new(center[1], center[2], center[3])
+				part.Parent = folder
+			end
+		end
+		return
 	end
 
+	if not BlockedZoneCenter then
+		return
+	end
+
+	blockedZoneVisualPart = Instance.new("Part")
+	blockedZoneVisualPart.Name = "AntiTPZone"
+	blockedZoneVisualPart.Anchored = true
+	blockedZoneVisualPart.CanCollide = false
+	blockedZoneVisualPart.CanQuery = false
+	blockedZoneVisualPart.CanTouch = false
+	blockedZoneVisualPart.CastShadow = false
+	blockedZoneVisualPart.Material = Enum.Material.ForceField
+	blockedZoneVisualPart.Color = Color3.fromRGB(255, 70, 70)
+	blockedZoneVisualPart.Transparency = 0.72
 	blockedZoneVisualPart.Size = Vector3.new(BlockedZoneSize, BlockedZoneSize, BlockedZoneSize)
 	blockedZoneVisualPart.CFrame = CFrame.new(BlockedZoneCenter)
-	blockedZoneVisualPart.Transparency = 0.72
+	blockedZoneVisualPart.Parent = folder
 end
 
 function setBlockedZoneAtPlayer()
+	return addBlockedZoneAtPlayer()
+end
+
+function applyHrpCFrameInstant(hrp, goalCFrame)
+	hrp.CFrame = goalCFrame
+	hrp.AssemblyLinearVelocity = Vector3.zero
+	hrp.AssemblyAngularVelocity = Vector3.zero
+end
+
+function teleportHrpToInstant(pos, lookAt)
+	if isPosInBlockedZone(pos) then return false end
 	local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-	if not hrp then return false end
-	BlockedZoneCenter = hrp.Position
-	updateBlockedZoneVisual()
-	scheduleSaveConfig()
+	if not hrp or not pos then return false end
+	local cf = lookAt and CFrame.new(pos, lookAt) or CFrame.new(pos)
+	applyHrpCFrameInstant(hrp, cf)
 	return true
 end
 
-function teleportHrpTo(pos)
-	if isPosInBlockedZone(pos) then return end
+function teleportHrpToSteps(pos, runId)
+	if isPosInBlockedZone(pos) then return false end
 	local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-	if not hrp or not pos then return end
-	hrp.CFrame = CFrame.new(pos)
-	hrp.AssemblyLinearVelocity = Vector3.zero
-	hrp.AssemblyAngularVelocity = Vector3.zero
+	if not hrp or not pos then return false end
+	if TeleportMode ~= "smooth" then
+		return teleportHrpToInstant(pos)
+	end
+
+	local start = hrp.Position
+	local goal = pos
+	local offset = goal - start
+	local dist = offset.Magnitude
+	if dist < 0.4 then
+		applyHrpCFrameInstant(hrp, CFrame.new(goal))
+		return true
+	end
+
+	local dir = offset.Unit
+	local traveled = 0
+	while traveled < dist - 0.1 do
+		if runId and not shouldFarmContinue(runId) then return false end
+		local step = math.min(TeleportStepSize, dist - traveled)
+		traveled += step
+		applyHrpCFrameInstant(hrp, CFrame.new(start + dir * traveled))
+		if not interruptibleWait(TeleportStepDelay, runId) then return false end
+	end
+
+	applyHrpCFrameInstant(hrp, CFrame.new(goal))
+	return true
+end
+
+function teleportHrpTo(pos, opts)
+	opts = opts or {}
+	if opts.smooth then
+		return teleportHrpToSteps(pos, opts.runId)
+	end
+	return teleportHrpToInstant(pos, opts.lookAt)
 end
 
 function interruptibleWait(seconds, runId)
@@ -856,20 +1544,26 @@ function isNearHub()
 	return (here - there).Magnitude <= HUB_NEAR_RADIUS
 end
 
-function teleportToHub()
-	if isNearHub() then return end
+function teleportToHub(runId)
+	if isNearHub() then return true end
 
+	local hubPos
 	local spawnPart = getTeleportSpawnPart()
 	if spawnPart then
 		hubPosition = spawnPart.Position + Vector3.new(0, 3, 0)
-		teleportHrpTo(hubPosition)
-		return
+		hubPos = hubPosition
+	else
+		hubPos = getHubPosition()
 	end
-	teleportHrpTo(getHubPosition())
+	local useSmooth = TeleportMode == "smooth"
+	return teleportHrpTo(hubPos, { smooth = useSmooth, runId = runId })
 end
 
 function hubRestWait(runId, doTeleport)
 	if doTeleport == nil then doTeleport = true end
+	if not HubWaitEnabled then
+		return true
+	end
 
 	farmPhase = "hub"
 	releaseMouseHold()
@@ -877,10 +1571,7 @@ function hubRestWait(runId, doTeleport)
 	stopCharacterMotion()
 	currentTargetPart = nil
 	if doTeleport then
-		teleportToHub()
-	end
-	if not HubWaitEnabled then
-		return true
+		if not teleportToHub(runId) then return false end
 	end
 	local waitTime = HUB_WAIT_MIN + math.random() * (HUB_WAIT_MAX - HUB_WAIT_MIN)
 	return interruptibleWait(waitTime, runId)
@@ -911,8 +1602,21 @@ function pressF()
 	pcall(function() keytap(VK_F) end)
 end
 
+function moveMouseToScreen(x, y)
+	if not LegitMouseCapture or not x or not y then return end
+	if VirtualInputManager then
+		pcall(function()
+			VirtualInputManager:SendMouseMoveEvent(x, y, game)
+		end)
+	end
+	if typeof(mousemoveabs) == "function" then
+		pcall(function() mousemoveabs(x, y) end)
+	end
+end
+
 function holdMouseAt(x, y)
 	x, y = x or 0, y or 0
+	moveMouseToScreen(x, y)
 	if mouseHeld and math.abs(holdMouseX - x) < 2 and math.abs(holdMouseY - y) < 2 then
 		return
 	end
@@ -921,7 +1625,7 @@ function holdMouseAt(x, y)
 		pcall(function()
 			VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
 		end)
-	else
+	elseif LegitMouseCapture then
 		pcall(function()
 			if typeof(mouse1press) == "function" then
 				mouse1press()
@@ -933,14 +1637,18 @@ function holdMouseAt(x, y)
 end
 
 function clickAt(x, y)
+	moveMouseToScreen(x, y)
 	releaseMouseHold()
 	if VirtualInputManager and x and y then
 		pcall(function()
 			VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
-			task.wait(0.05)
+			local releaseDelay = AttackDelay > 0 and 0.05 or 0.01
+			if releaseDelay > 0 then
+				task.wait(releaseDelay)
+			end
 			VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
 		end)
-	else
+	elseif LegitMouseCapture then
 		pcall(function()
 			if typeof(mouse1click) == "function" then
 				mouse1click()
@@ -976,15 +1684,37 @@ function getPartPosition(part)
 end
 
 function getAimScreenPos(part)
-	local aimPos = getPartPosition(part)
-	if AimAtTarget and currentTargetPart and currentTargetPart.Parent then
-		aimPos = getPartPosition(currentTargetPart) or aimPos
+	local aimPos
+	if AimAtTarget then
+		if activeNode then
+			aimPos = getTargetCenter(activeNode, activeTargetKind)
+		end
+		if not aimPos and currentTargetPart and currentTargetPart.Parent then
+			aimPos = getPartPosition(currentTargetPart)
+		end
 	end
+	aimPos = aimPos or getPartPosition(part)
 	local x, y = getScreenPos(aimPos)
 	if not x then
 		x, y = getFallbackScreenPos()
 	end
 	return x, y
+end
+
+function isTargetAlive(node, kind)
+	return isNodeAlive(node)
+end
+
+function getTargetHitboxes(node, kind)
+	return getHitboxes(node)
+end
+
+function getTargetCenter(node, kind)
+	return getNodeCenter(node)
+end
+
+function getTargetHealth(node, kind)
+	return getNodeHealth(node)
 end
 
 function isNodeAlive(node)
@@ -1009,13 +1739,13 @@ function resetAutoF()
 	stuckSince = 0
 end
 
-function updateAutoF(node)
+function updateAutoF(node, kind)
 	if UseFKey then
 		autoFActive = false
 		return
 	end
 
-	local health = getNodeHealth(node)
+	local health = getTargetHealth(node, kind)
 	if not health then return end
 
 	local now = tick()
@@ -1068,27 +1798,40 @@ function getValidTargets()
 		end
 		clearFarmWarning("no_nodes")
 
-		local treeFolder = nodesFolder:FindFirstChild("Food")
-		if treeFolder then
-			for _, node in ipairs(treeFolder:GetChildren()) do
-				if isNodeAlive(node) and not isNodeInBlockedZone(node) then
-					table.insert(trees, { node = node, kind = "tree" })
+		if FarmTreesEnabled then
+			local treeFolder = nodesFolder:FindFirstChild("Food")
+			if treeFolder then
+				for _, node in ipairs(treeFolder:GetChildren()) do
+					if isNodeAlive(node) and not isNodeInBlockedZone(node) then
+						table.insert(trees, { node = node, kind = "tree" })
+					end
 				end
 			end
 		end
 
-		local stoneFolder = nodesFolder:FindFirstChild("Resources")
-		if stoneFolder then
-			for _, node in ipairs(stoneFolder:GetChildren()) do
-				if isNodeAlive(node) and not isNodeInBlockedZone(node) then
-					table.insert(stones, { node = node, kind = "stone" })
+		if FarmStonesEnabled then
+			local stoneFolder = nodesFolder:FindFirstChild("Resources")
+			if stoneFolder then
+				for _, node in ipairs(stoneFolder:GetChildren()) do
+					if isNodeAlive(node) and not isNodeInBlockedZone(node) then
+						table.insert(stones, { node = node, kind = "stone" })
+					end
 				end
 			end
 		end
+
 	end)
 
-	local targets = #trees > 0 and trees or stones
-	if #targets == 0 then
+	local targets = {}
+	for _, list in ipairs({ trees, stones }) do
+		for _, item in ipairs(list) do
+			table.insert(targets, item)
+		end
+	end
+
+	if not FarmTreesEnabled and not FarmStonesEnabled then
+		pushFarmWarning("no_mode", "Выключены все типы целей")
+	elseif #targets == 0 then
 		pushFarmWarning("no_targets", "Нет целей для добычи")
 	else
 		clearFarmWarning("no_targets")
@@ -1125,6 +1868,9 @@ end
 
 function pickBestTarget(targets)
 	if #targets == 0 then return nil end
+	if TargetPickMode == "random" then
+		return targets[math.random(1, #targets)]
+	end
 	local refPos = getHubPosition()
 	local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 	if hrp and not refPos then
@@ -1136,7 +1882,7 @@ function pickBestTarget(targets)
 
 	local best, bestDist = nil, nil
 	for _, target in ipairs(targets) do
-		local center = getNodeCenter(target.node)
+		local center = getTargetCenter(target.node, target.kind)
 		if center then
 			local dist = (center - refPos).Magnitude
 			if not bestDist or dist < bestDist then
@@ -1152,7 +1898,7 @@ function rebuildPatrolPoints()
 	patrolPoints = {}
 	pcall(function()
 		for _, target in ipairs(getValidTargets()) do
-			local center = getNodeCenter(target.node)
+			local center = getTargetCenter(target.node, target.kind)
 			if center then
 				table.insert(patrolPoints, center)
 			end
@@ -1346,12 +2092,16 @@ end
 
 function attackPart(part)
 	if not part then return end
+	if AttackDelay > 0 and (tick() - lastAttackAt) < AttackDelay then
+		return
+	end
+	lastAttackAt = tick()
 	pressF()
 	local x, y = getAimScreenPos(part)
 	if not x or not y then return end
 	if UseClick then
 		clickAt(x, y)
-	else
+	elseif LegitMouseCapture then
 		holdMouseAt(x, y)
 	end
 end
@@ -1422,22 +2172,31 @@ function teleportToTarget()
 		pos = Vector3.new(anchor.X, baseY, anchor.Z)
 	end
 
-	if AimAtTarget and activeTargetKind ~= "stone" then
-		hrp.CFrame = CFrame.new(pos, partPos)
+	if AimAtTarget and partPos then
+		applyHrpCFrameInstant(hrp, CFrame.new(pos, partPos))
 	else
-		hrp.CFrame = CFrame.new(pos)
+		applyHrpCFrameInstant(hrp, CFrame.new(pos))
 	end
 
 	hrp.AssemblyLinearVelocity = Vector3.zero
 	hrp.AssemblyAngularVelocity = Vector3.zero
 
-	if not UseClick and currentTargetPart then
+	if LegitMouseCapture and currentTargetPart then
 		local x, y = getAimScreenPos(currentTargetPart)
-		holdMouseAt(x, y)
+		if x and y then
+			if not UseClick then
+				holdMouseAt(x, y)
+			elseif AimAtTarget then
+				moveMouseToScreen(x, y)
+			end
+		end
 	end
 end
 
 function isOurGui(gui)
+	if not gui then return false end
+	if gui:GetAttribute("MaxiHubBlackScreen") == true then return true end
+	if blackScreenGui and gui == blackScreenGui then return true end
 	return screenGuiRef and (gui == screenGuiRef or gui:IsDescendantOf(screenGuiRef))
 end
 
@@ -1519,7 +2278,11 @@ end
 function startSafeMode()
 	stopSafeMode()
 	hideOtherGuis()
-	scanTrades(playerGui)
+	task.defer(function()
+		if FarmEnabled then
+			scanTrades(playerGui)
+		end
+	end)
 
 	safeModeConnections.child = playerGui.ChildAdded:Connect(function(child)
 		if not FarmEnabled then return end
@@ -1992,16 +2755,19 @@ function runSearchPhase(runId)
 			return targets
 		end
 		if not shouldFarmContinue(runId) then break end
-		-- В центр — один раз; дальше только ждём, без повторного ТП
-		if not hubRestWait(runId, not hubPlaced) then break end
-		hubPlaced = true
+		if HubWaitEnabled then
+			if not hubRestWait(runId, not hubPlaced) then break end
+			hubPlaced = true
+		end
+		task.wait(0.3)
 	end
 
 	farmPhase = "idle"
 	return {}
 end
 
-function killFarmLoops()
+function killFarmLoops(opts)
+	opts = opts or {}
 	if FarmEnabled and farmTimeStarted > 0 then
 		farmTimeTotal += tick() - farmTimeStarted
 		farmTimeStarted = 0
@@ -2028,6 +2794,9 @@ function killFarmLoops()
 	sellInProgress = false
 
 	farmThread = nil
+	if not opts.keepRender3d then
+		pcall(onFarmRender3dStop)
+	end
 	pcall(stopSafeMode)
 end
 
@@ -2036,10 +2805,12 @@ function stopFarm()
 end
 
 function softCleanup()
+	flushSaveConfig()
 	stopFarm()
 	stopSafeMode()
 	stopCameraLoop()
 	destroyBlockedZoneVisual()
+	cleanupRender3d()
 	if screenGuiRef and screenGuiRef.Parent then
 		pcall(function() screenGuiRef:Destroy() end)
 	elseif screenGui and screenGui.Parent then
@@ -2052,7 +2823,10 @@ function fullUnload()
 	restoreCamera()
 end
 
+genv.MaxiHubToggleRender3d = toggleRender3d
 genv.MaxiHubStop = softCleanup
+genv.MaxiHubPatchConfig = patchConfigTable
+genv.MaxiHubFlushConfig = flushSaveConfig
 
 if pendingPrevStop and pendingPrevStop ~= softCleanup then
 	pcall(pendingPrevStop)
@@ -2060,16 +2834,17 @@ end
 pendingPrevStop = nil
 
 function startFarm()
-	killFarmLoops()
+	killFarmLoops({ keepRender3d = true })
 	FarmEnabled = true
 	farmTimeStarted = tick()
 	lastFarmReportAt = tick()
 	local myRunId = farmRunId
-	startSafeMode()
+	onFarmRender3dStart()
+	task.defer(startSafeMode)
 
 	teleportConnection = RunService.Heartbeat:Connect(function()
 		if not shouldFarmContinue(myRunId) then return end
-		if farmPhase == "collect" or farmPhase == "wait" or farmPhase == "sell" or farmPhase == "hub" or farmPhase == "search" then return end
+		if farmPhase == "collect" or farmPhase == "wait" or farmPhase == "sell" or farmPhase == "hub" or farmPhase == "search" or farmPhase == "travel" then return end
 		if farmPhase == "mine" and currentTargetPart then
 			pcall(teleportToTarget)
 		end
@@ -2087,7 +2862,7 @@ function startFarm()
 			if not hubPrimed then
 				hubPrimed = true
 				captureHubPosition()
-				if not hubRestWait(myRunId) then return end
+				if HubWaitEnabled and not hubRestWait(myRunId) then return end
 			end
 
 			local targets = getValidTargets()
@@ -2110,11 +2885,10 @@ function startFarm()
 
 			activeNode = picked.node
 			activeTargetKind = picked.kind
-			farmPhase = "mine"
 			orbitAngle = 0
 			resetAutoF()
 
-			local hitboxes = getHitboxes(activeNode)
+			local hitboxes = getTargetHitboxes(activeNode, activeTargetKind)
 			if #hitboxes == 0 then
 				pushFarmWarning("no_hitbox", "У цели нет Hitbox")
 				task.wait(0.5)
@@ -2123,19 +2897,32 @@ function startFarm()
 			clearFarmWarning("no_hitbox")
 
 			currentTargetPart = hitboxes[1]
+			local partPos = getPartPosition(currentTargetPart)
+			if partPos then
+				local anchor = getMineAnchorPos(activeNode, activeTargetKind, partPos)
+				local height = getTeleportHeightForKind(activeTargetKind)
+				local approachPos = Vector3.new(anchor.X, anchor.Y + height, anchor.Z)
+				farmPhase = "travel"
+				local useSmooth = TeleportMode == "smooth"
+				if not teleportHrpTo(approachPos, { smooth = useSmooth, runId = myRunId }) then return end
+			end
+
+			farmPhase = "mine"
 			local mineDeadline = tick() + 60
 
 			while shouldFarmContinue(myRunId)
 				and tick() < mineDeadline
-				and isNodeAlive(activeNode) do
-				updateAutoF(activeNode)
+				and isTargetAlive(activeNode, activeTargetKind) do
+				updateAutoF(activeNode, activeTargetKind)
 				if autoFActive then
 					pushFarmWarning("stuck_mining", "Долго не ломается — жму F")
 				else
 					clearFarmWarning("stuck_mining")
 				end
 				attackPart(currentTargetPart)
-				task.wait(0.05)
+				if AttackDelay > 0 then
+					task.wait(AttackDelay)
+				end
 			end
 
 			if not shouldFarmContinue(myRunId) then return end
@@ -2216,11 +3003,23 @@ end
 -- ===== UI (maxi-hub-ui.lua — отдельный файл, loadstring = свой scope) =====
 do
 	local genvUi = typeof(getgenv) == "function" and getgenv() or _G
+	local preferLocal = type(genvUi.MaxiHubLocalRoot) == "string" and genvUi.MaxiHubLocalRoot ~= ""
+	if preferLocal then
+		genvUi._MaxiHubUILibrary = nil
+	end
 	if not genvUi._MaxiHubUILibrary then
 		local source
 		local base = genvUi.MaxiHubOfficialRaw or genvUi.MaxiHubRemoteBase
 		local repoOnly = genvUi.MaxiHubRepoOnly == true
-		if base and typeof(game.HttpGet) == "function" then
+		if preferLocal and typeof(readfile) == "function" and typeof(isfile) == "function" then
+			for _, p in ipairs(getWorkspaceModulePaths("maxi-hub-ui.lua")) do
+				if isfile(p) then
+					source = readfile(p)
+					break
+				end
+			end
+		end
+		if not source and base and typeof(game.HttpGet) == "function" then
 			local function isErrorPage(src)
 				if type(src) ~= "string" or src == "" or src:sub(1, 1) ~= "<" then
 					return false
@@ -2241,7 +3040,7 @@ do
 			end
 		end
 		if not source and not repoOnly and typeof(readfile) == "function" and typeof(isfile) == "function" then
-			for _, p in ipairs({ "maxi-hub/maxi-hub-ui.lua", "maxi-hub-ui.lua" }) do
+			for _, p in ipairs(getWorkspaceModulePaths("maxi-hub-ui.lua")) do
 				if isfile(p) then
 					source = readfile(p)
 					break
@@ -2276,6 +3075,108 @@ UI_LAYOUT = {
 	TOGGLE_Y_STEP = 44,
 	SLIDER_Y_STEP = 60,
 }
+
+-- Вкладка «Обновления»
+function buildMaxiHubChangelogTab(page, uiKit)
+	local changelog = loadChangelogLib()
+	local scroll = uiKit.makeScrollPage(page)
+	local wrap = uiKit.makeListWrap(scroll)
+
+	local buildTag = (genv.MaxiHubVersion and tostring(genv.MaxiHubVersion))
+		or SCRIPT_VERSION
+		or (changelog and changelog.current)
+		or "—"
+
+	local header = Instance.new("TextLabel")
+	header.Size = UDim2.new(1, 0, 0, 36)
+	header.BackgroundColor3 = uiKit.COLORS.panel
+	header.BorderSizePixel = 0
+	header.Font = Enum.Font.GothamBold
+	header.TextSize = 12
+	header.TextColor3 = uiKit.COLORS.accent
+	header.Text = L("changelog_current") .. ": " .. buildTag
+	header.LayoutOrder = 1
+	header.Parent = wrap
+	uiKit.addCorner(header, 8)
+
+	local headerPad = Instance.new("UIPadding")
+	headerPad.PaddingLeft = UDim.new(0, 12)
+	headerPad.PaddingRight = UDim.new(0, 12)
+	headerPad.Parent = header
+
+	local layoutOrder = 2
+	local entries = changelog and changelog.entries
+	if type(entries) == "table" and #entries > 0 then
+		for _, entry in ipairs(entries) do
+			if type(entry) == "table" and type(entry.changes) == "table" and #entry.changes > 0 then
+				local card = Instance.new("Frame")
+				card.Size = UDim2.new(1, 0, 0, 0)
+				card.AutomaticSize = Enum.AutomaticSize.Y
+				card.BackgroundColor3 = uiKit.COLORS.panel
+				card.BorderSizePixel = 0
+				card.LayoutOrder = layoutOrder
+				layoutOrder += 1
+				card.Parent = wrap
+				uiKit.addCorner(card, 8)
+
+				local cardPad = Instance.new("UIPadding")
+				cardPad.PaddingTop = UDim.new(0, 10)
+				cardPad.PaddingBottom = UDim.new(0, 10)
+				cardPad.PaddingLeft = UDim.new(0, 12)
+				cardPad.PaddingRight = UDim.new(0, 12)
+				cardPad.Parent = card
+
+				local cardList = Instance.new("UIListLayout")
+				cardList.SortOrder = Enum.SortOrder.LayoutOrder
+				cardList.Padding = UDim.new(0, 6)
+				cardList.Parent = card
+
+				local versionText = type(entry.version) == "string" and entry.version or "—"
+				local dateText = type(entry.date) == "string" and entry.date or ""
+				local title = Instance.new("TextLabel")
+				title.Size = UDim2.new(1, 0, 0, 18)
+				title.BackgroundTransparency = 1
+				title.Font = Enum.Font.GothamBold
+				title.TextSize = 12
+				title.TextColor3 = uiKit.COLORS.text
+				title.TextXAlignment = Enum.TextXAlignment.Left
+				title.Text = versionText .. (dateText ~= "" and (" · " .. dateText) or "")
+				title.LayoutOrder = 1
+				title.Parent = card
+
+				for i, line in ipairs(entry.changes) do
+					if type(line) == "string" and line ~= "" then
+						local row = Instance.new("TextLabel")
+						row.Size = UDim2.new(1, 0, 0, 0)
+						row.AutomaticSize = Enum.AutomaticSize.Y
+						row.BackgroundTransparency = 1
+						row.Font = Enum.Font.Gotham
+						row.TextSize = 11
+						row.TextColor3 = uiKit.COLORS.muted
+						row.TextWrapped = true
+						row.TextXAlignment = Enum.TextXAlignment.Left
+						row.Text = "• " .. line
+						row.LayoutOrder = i + 1
+						row.Parent = card
+					end
+				end
+			end
+		end
+	else
+		local wip = Instance.new("TextLabel")
+		wip.Size = UDim2.new(1, 0, 0, 48)
+		wip.BackgroundColor3 = uiKit.COLORS.panel
+		wip.BorderSizePixel = 0
+		wip.Font = Enum.Font.Gotham
+		wip.TextSize = 13
+		wip.TextColor3 = uiKit.COLORS.muted
+		wip.Text = L("changelog_wip")
+		wip.LayoutOrder = 2
+		wip.Parent = wrap
+		uiKit.addCorner(wip, 8)
+		registerLocale(wip, "changelog_wip")
+	end
+end
 
 -- Вкладка «Кредиты» — обязательная, копировать в лаунчеры других игр
 function buildMaxiHubCreditsTab(page, uiKit, opts)
@@ -2349,7 +3250,9 @@ function bootstrapMaxiHub()
 	if hubBootstrapped then return end
 	hubBootstrapped = true
 	loadConfig()
+	genv.MaxiHubVersion = SCRIPT_VERSION
 	loadLocaleLib()
+	loadEspLib()
 	refreshPhaseText()
 
 tabDefs = getTabDefs()
@@ -2359,14 +3262,26 @@ ui = MaxiHubUILib.create({
 	playerGui = playerGui,
 	genv = genv,
 	title = SCRIPT_TITLE,
+	version = (genv.MaxiHubVersion and tostring(genv.MaxiHubVersion)) or SCRIPT_VERSION or "",
 	guiName = GUI_NAME,
 	savedPosition = savedUiPos,
 	defaultPosition = DEFAULT_UI_POS,
+	displayOrder = 999999,
 	titleHint = L("title_hint"),
 	hideHintText = L("hide_hint"),
 	language = UiLanguage,
 	onLanguageChange = setUiLanguage,
 	registerLocale = registerLocale,
+	mobileStopText = L("mobile_btn_stop"),
+	mobileMenuText = L("mobile_btn_menu"),
+	onMobileFarmStop = function()
+		setFarmState(false)
+	end,
+	onMobileMenuToggle = function()
+		if uiRoot then
+			uiRoot.Visible = not uiRoot.Visible
+		end
+	end,
 	tabs = tabDefs,
 	keyStatusText = function()
 		local keyGate = genv.MaxiHubKeyGate
@@ -2392,6 +3307,15 @@ makeListWrap = ui.makeListWrap
 makeFlowPanel = ui.makeFlowPanel
 makeStatRow = ui.makeStatRow
 makeFlowToggle = ui.makeFlowToggle
+makeFlowSlider = ui.makeFlowSlider or function(parent, label, min, max, initial, onChange, layoutOrder, localeKey)
+	local box = Instance.new("Frame")
+	box.Size = UDim2.new(1, 0, 0, 52)
+	box.BackgroundTransparency = 1
+	box.LayoutOrder = layoutOrder or 0
+	box.Parent = parent
+	makeSlider(box, 0, label, min, max, initial, onChange, localeKey)
+	return box
+end
 screenGui = ui.screenGui
 uiRoot = ui.uiRoot
 uiBody = ui.uiBody
@@ -2490,151 +3414,176 @@ statusLabel.Parent = mainPage
 -- Настройки
 setScroll = makeScrollPage(contentPages[2])
 setWrap = makeListWrap(setScroll)
+setWrap:SetAttribute("MaxiHubCardToggles", true)
 
-makeSectionTitle(setWrap, L("sec_mining"), 1, "sec_mining")
+local setOrder = 0
+local function nextSetOrder()
+	setOrder += 1
+	return setOrder
+end
 
-mineBox = Instance.new("Frame")
-mineBox.Size = UDim2.new(1, 0, 0, UI_LAYOUT.MINE_BOX_H)
-mineBox.BackgroundTransparency = 1
-mineBox.LayoutOrder = 2
-mineBox.Parent = setWrap
+makeSectionTitle(setWrap, L("sec_targets"), nextSetOrder(), "sec_targets")
+makeFlowToggle(setWrap, L("toggle_farm_trees"), FarmTreesEnabled, function(state)
+	FarmTreesEnabled = state
+	scheduleSaveConfig()
+end, nextSetOrder(), 0.22, "toggle_farm_trees")
+makeFlowToggle(setWrap, L("toggle_farm_stones"), FarmStonesEnabled, function(state)
+	FarmStonesEnabled = state
+	scheduleSaveConfig()
+end, nextSetOrder(), 0.5, "toggle_farm_stones")
+makeFlowToggle(setWrap, L("toggle_target_nearest"), TargetPickMode == "nearest", function(state)
+	if state then
+		TargetPickMode = "nearest"
+		scheduleSaveConfig()
+	end
+end, nextSetOrder(), nil, "toggle_target_nearest")
+makeFlowToggle(setWrap, L("toggle_target_random"), TargetPickMode == "random", function(state)
+	if state then
+		TargetPickMode = "random"
+		scheduleSaveConfig()
+	end
+end, nextSetOrder(), nil, "toggle_target_random")
 
-makeToggle(mineBox, 0, L("toggle_orbit"), OrbitEnabled, function(state)
+makeSectionTitle(setWrap, L("sec_teleport"), nextSetOrder(), "sec_teleport")
+makeFlowToggle(setWrap, L("toggle_tp_smooth"), TeleportMode == "smooth", function(state)
+	TeleportMode = state and "smooth" or "instant"
+	scheduleSaveConfig()
+end, nextSetOrder(), nil, "toggle_tp_smooth")
+makeFlowSlider(setWrap, L("slider_tp_step_size"), 2, 40, TeleportStepSize, function(v)
+	TeleportStepSize = math.floor(v)
+	scheduleSaveConfig()
+end, nextSetOrder(), "slider_tp_step_size")
+makeFlowSlider(setWrap, L("slider_tp_step_delay"), 0.02, 0.3, TeleportStepDelay, function(v)
+	TeleportStepDelay = v
+	scheduleSaveConfig()
+end, nextSetOrder(), "slider_tp_step_delay")
+makeFlowSlider(setWrap, L("slider_attack_delay"), 0, 1.5, AttackDelay, function(v)
+	AttackDelay = v
+	scheduleSaveConfig()
+end, nextSetOrder(), "slider_attack_delay")
+
+makeSectionTitle(setWrap, L("sec_mining"), nextSetOrder(), "sec_mining")
+makeFlowToggle(setWrap, L("toggle_orbit"), OrbitEnabled, function(state)
 	OrbitEnabled = state
 	scheduleSaveConfig()
-end, nil, "toggle_orbit")
-
-makeToggle(mineBox, UI_LAYOUT.TOGGLE_Y_STEP, L("toggle_aim"), AimAtTarget, function(state)
+end, nextSetOrder(), nil, "toggle_orbit")
+makeFlowToggle(setWrap, L("toggle_aim"), AimAtTarget, function(state)
 	AimAtTarget = state
 	scheduleSaveConfig()
-end, nil, "toggle_aim")
-
-makeToggle(mineBox, UI_LAYOUT.TOGGLE_Y_STEP * 2, L("toggle_fkey"), UseFKey, function(state)
+end, nextSetOrder(), nil, "toggle_aim")
+makeFlowToggle(setWrap, L("toggle_fkey"), UseFKey, function(state)
 	UseFKey = state
 	scheduleSaveConfig()
-end, nil, "toggle_fkey")
-
-makeToggle(mineBox, UI_LAYOUT.TOGGLE_Y_STEP * 3, L("toggle_click"), UseClick, function(state)
+end, nextSetOrder(), nil, "toggle_fkey")
+makeFlowToggle(setWrap, L("toggle_click"), UseClick, function(state)
 	UseClick = state
 	if state then
 		releaseMouseHold()
 	end
 	scheduleSaveConfig()
-end)
-
-slidersBox = Instance.new("Frame")
-slidersBox.Size = UDim2.new(1, 0, 0, UI_LAYOUT.SLIDERS_BOX_H)
-slidersBox.BackgroundTransparency = 1
-slidersBox.LayoutOrder = 3
-slidersBox.Parent = setWrap
-
-makeSlider(slidersBox, 0, L("slider_orbit_speed"), 0.3, 3, OrbitSpeed, function(v)
+end, nextSetOrder(), nil, "toggle_click")
+makeFlowToggle(setWrap, L("toggle_legit_mouse"), LegitMouseCapture, function(state)
+	LegitMouseCapture = state
+	if not state then
+		releaseMouseHold()
+	end
+	scheduleSaveConfig()
+end, nextSetOrder(), nil, "toggle_legit_mouse")
+makeFlowSlider(setWrap, L("slider_orbit_speed"), 0.3, 3, OrbitSpeed, function(v)
 	OrbitSpeed = v
 	scheduleSaveConfig()
-end, "slider_orbit_speed")
-
-makeSlider(slidersBox, UI_LAYOUT.SLIDER_Y_STEP, L("slider_orbit_size"), 4, 30, OrbitDiameter, function(v)
+end, nextSetOrder(), "slider_orbit_speed")
+makeFlowSlider(setWrap, L("slider_orbit_size"), 4, 30, OrbitDiameter, function(v)
 	OrbitDiameter = v
 	scheduleSaveConfig()
-end, "slider_orbit_size")
+end, nextSetOrder(), "slider_orbit_size")
 
-makeSectionTitle(setWrap, L("sec_safety"), 4, "sec_safety")
+makeSectionTitle(setWrap, L("sec_performance"), nextSetOrder(), "sec_performance")
+setRender3dToggle = makeFlowToggle(setWrap, L("toggle_render3d"), Render3dDisabled, function(state)
+	if render3dToggleSilent then return end
+	applyRender3dState(state)
+end, nextSetOrder(), nil, "toggle_render3d")
+makeFlowToggle(setWrap, L("toggle_render3d_farm"), AutoRender3dOnFarm, function(state)
+	AutoRender3dOnFarm = state
+	scheduleSaveConfig()
+end, nextSetOrder(), nil, "toggle_render3d_farm")
+makeFlowToggle(setWrap, L("toggle_black_screen"), BlackScreenOverlay, function(state)
+	BlackScreenOverlay = state
+	updateBlackScreenOverlay()
+	scheduleSaveConfig()
+end, nextSetOrder(), nil, "toggle_black_screen")
 
-safeBox = Instance.new("Frame")
-safeBox.Size = UDim2.new(1, 0, 0, UI_LAYOUT.SAFE_BOX_H)
-safeBox.BackgroundTransparency = 1
-safeBox.LayoutOrder = 5
-safeBox.Parent = setWrap
-
-makeToggle(safeBox, 0, L("toggle_block_ui"), BlockUiDuringFarm, function(state)
+makeSectionTitle(setWrap, L("sec_safety"), nextSetOrder(), "sec_safety")
+makeFlowToggle(setWrap, L("toggle_block_ui"), BlockUiDuringFarm, function(state)
 	BlockUiDuringFarm = state
 	scheduleSaveConfig()
-end, nil, "toggle_block_ui")
-
-makeToggle(safeBox, UI_LAYOUT.TOGGLE_Y_STEP, L("toggle_block_trades"), BlockTrades, function(state)
+end, nextSetOrder(), nil, "toggle_block_ui")
+makeFlowToggle(setWrap, L("toggle_block_trades"), BlockTrades, function(state)
 	BlockTrades = state
 	if FarmEnabled then
 		scanTrades(playerGui)
 	end
 	scheduleSaveConfig()
-end, nil, "toggle_block_trades")
+end, nextSetOrder(), nil, "toggle_block_trades")
 
-blockHint = Instance.new("TextLabel")
-blockHint.Size = UDim2.new(1, 0, 0, 18)
-blockHint.BackgroundTransparency = 1
-blockHint.Font = Enum.Font.Gotham
-blockHint.TextSize = 10
-blockHint.TextColor3 = COLORS.muted
-blockHint.TextXAlignment = Enum.TextXAlignment.Left
-blockHint.Text = L("hint_block_ui")
-blockHint.LayoutOrder = 6
-blockHint.Parent = setWrap
-registerLocale(blockHint, "hint_block_ui")
-
-makeSectionTitle(setWrap, L("sec_antitp"), 7, "sec_antitp")
-
-zoneBox = Instance.new("Frame")
-zoneBox.Size = UDim2.new(1, 0, 0, 44)
-zoneBox.BackgroundTransparency = 1
-zoneBox.LayoutOrder = 8
-zoneBox.Parent = setWrap
-
-makeToggle(zoneBox, 0, L("toggle_antitp"), BlockedZonesEnabled, function(state)
+makeSectionTitle(setWrap, L("sec_antitp"), nextSetOrder(), "sec_antitp")
+makeFlowToggle(setWrap, L("toggle_antitp"), BlockedZonesEnabled, function(state)
 	BlockedZonesEnabled = state
 	updateBlockedZoneVisual()
 	scheduleSaveConfig()
-end, nil, "toggle_antitp")
-
-zoneSliderBox = Instance.new("Frame")
-zoneSliderBox.Size = UDim2.new(1, 0, 0, UI_LAYOUT.SLIDER_Y_STEP)
-zoneSliderBox.BackgroundTransparency = 1
-zoneSliderBox.LayoutOrder = 9
-zoneSliderBox.Parent = setWrap
-
-makeSlider(zoneSliderBox, 0, L("slider_cube_size"), 20, 120, BlockedZoneSize, function(v)
-	BlockedZoneSize = math.floor(v)
-	updateBlockedZoneVisual()
-	scheduleSaveConfig()
-end, "slider_cube_size")
+end, nextSetOrder(), nil, "toggle_antitp")
 
 zoneBtnRow = Instance.new("Frame")
 zoneBtnRow.Size = UDim2.new(1, 0, 0, 36)
 zoneBtnRow.BackgroundTransparency = 1
-zoneBtnRow.LayoutOrder = 10
+zoneBtnRow.LayoutOrder = nextSetOrder()
 zoneBtnRow.Parent = setWrap
 
 zonePlaceBtn = Instance.new("TextButton")
-zonePlaceBtn.Size = UDim2.new(1, 0, 1, 0)
+zonePlaceBtn.Size = UDim2.new(0.48, 0, 1, 0)
 zonePlaceBtn.BackgroundColor3 = COLORS.panel
 zonePlaceBtn.BorderSizePixel = 0
 zonePlaceBtn.Font = Enum.Font.GothamBold
 zonePlaceBtn.TextSize = 11
 zonePlaceBtn.TextColor3 = COLORS.text
-zonePlaceBtn.Text = L("btn_place_cube")
+zonePlaceBtn.Text = L("btn_add_zone")
 zonePlaceBtn.AutoButtonColor = false
 zonePlaceBtn.Parent = zoneBtnRow
 addCorner(zonePlaceBtn, 8)
-registerLocale(zonePlaceBtn, "btn_place_cube")
+registerLocale(zonePlaceBtn, "btn_add_zone")
 
-zoneHint = Instance.new("TextLabel")
-zoneHint.Size = UDim2.new(1, 0, 0, 32)
-zoneHint.BackgroundTransparency = 1
-zoneHint.Font = Enum.Font.Gotham
-zoneHint.TextSize = 10
-zoneHint.TextColor3 = COLORS.muted
-zoneHint.TextWrapped = true
-zoneHint.TextXAlignment = Enum.TextXAlignment.Left
-zoneHint.Text = L("hint_antitp")
-zoneHint.LayoutOrder = 11
-zoneHint.Parent = setWrap
-registerLocale(zoneHint, "hint_antitp")
+zoneClearBtn = Instance.new("TextButton")
+zoneClearBtn.Size = UDim2.new(0.48, 0, 1, 0)
+zoneClearBtn.Position = UDim2.new(0.52, 0, 0, 0)
+zoneClearBtn.BackgroundColor3 = COLORS.card
+zoneClearBtn.BorderSizePixel = 0
+zoneClearBtn.Font = Enum.Font.GothamBold
+zoneClearBtn.TextSize = 11
+zoneClearBtn.TextColor3 = COLORS.muted
+zoneClearBtn.Text = L("btn_clear_zones")
+zoneClearBtn.AutoButtonColor = false
+zoneClearBtn.Parent = zoneBtnRow
+addCorner(zoneClearBtn, 8)
+registerLocale(zoneClearBtn, "btn_clear_zones")
+
+zonesListContainer = Instance.new("Frame")
+zonesListContainer.Size = UDim2.new(1, 0, 0, 0)
+zonesListContainer.AutomaticSize = Enum.AutomaticSize.Y
+zonesListContainer.BackgroundTransparency = 1
+zonesListContainer.LayoutOrder = nextSetOrder()
+zonesListContainer.Parent = setWrap
+
+local zonesListLayout = Instance.new("UIListLayout")
+zonesListLayout.Padding = UDim.new(0, 8)
+zonesListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+zonesListLayout.Parent = zonesListContainer
 
 zonePlaceBtn.MouseButton1Click:Connect(function()
 	if setBlockedZoneAtPlayer() then
 		zonePlaceBtn.Text = L("btn_cube_placed")
 		task.delay(1.2, function()
 			if zonePlaceBtn.Parent then
-				zonePlaceBtn.Text = L("btn_place_cube")
+				zonePlaceBtn.Text = L("btn_add_zone")
 			end
 		end)
 	else
@@ -2642,54 +3591,32 @@ zonePlaceBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
-makeSectionTitle(setWrap, L("sec_hub"), 12, "sec_hub")
+zoneClearBtn.MouseButton1Click:Connect(function()
+	clearBlockedZones()
+end)
 
-hubBox = Instance.new("Frame")
-hubBox.Size = UDim2.new(1, 0, 0, 44)
-hubBox.BackgroundTransparency = 1
-hubBox.LayoutOrder = 13
-hubBox.Parent = setWrap
+rebuildZonesListUI()
 
-makeToggle(hubBox, 0, L("toggle_hub_wait"), HubWaitEnabled, function(state)
+makeSectionTitle(setWrap, L("sec_hub"), nextSetOrder(), "sec_hub")
+makeFlowToggle(setWrap, L("toggle_hub_wait"), HubWaitEnabled, function(state)
 	HubWaitEnabled = state
 	scheduleSaveConfig()
-end, nil, "toggle_hub_wait")
+end, nextSetOrder(), nil, "toggle_hub_wait")
 
-hubHint = Instance.new("TextLabel")
-hubHint.Size = UDim2.new(1, 0, 0, 28)
-hubHint.BackgroundTransparency = 1
-hubHint.Font = Enum.Font.Gotham
-hubHint.TextSize = 10
-hubHint.TextColor3 = COLORS.muted
-hubHint.TextWrapped = true
-hubHint.TextXAlignment = Enum.TextXAlignment.Left
-hubHint.Text = L("hint_hub_wait")
-hubHint.LayoutOrder = 14
-hubHint.Parent = setWrap
-registerLocale(hubHint, "hint_hub_wait")
-
-makeSectionTitle(setWrap, L("sec_sell"), 15, "sec_sell")
-
-sellBox = Instance.new("Frame")
-sellBox.Size = UDim2.new(1, 0, 0, 96)
-sellBox.BackgroundTransparency = 1
-sellBox.LayoutOrder = 16
-sellBox.Parent = setWrap
-
-makeToggle(sellBox, 0, L("toggle_autosell"), AutoSellEnabled, function(state)
+makeSectionTitle(setWrap, L("sec_sell"), nextSetOrder(), "sec_sell")
+makeFlowToggle(setWrap, L("toggle_autosell"), AutoSellEnabled, function(state)
 	AutoSellEnabled = state
 	scheduleSaveConfig()
-end, nil, "toggle_autosell")
-
-makeSlider(sellBox, UI_LAYOUT.TOGGLE_Y_STEP, L("slider_sell_check"), 20, 120, SellCheckInterval, function(v)
+end, nextSetOrder(), nil, "toggle_autosell")
+makeFlowSlider(setWrap, L("slider_sell_check"), 20, 120, SellCheckInterval, function(v)
 	SellCheckInterval = math.floor(v)
 	scheduleSaveConfig()
-end, "slider_sell_check")
+end, nextSetOrder(), "slider_sell_check")
 
 sellBtnRow = Instance.new("Frame")
 sellBtnRow.Size = UDim2.new(1, 0, 0, 36)
 sellBtnRow.BackgroundTransparency = 1
-sellBtnRow.LayoutOrder = 17
+sellBtnRow.LayoutOrder = nextSetOrder()
 sellBtnRow.Parent = setWrap
 
 manualSellBtn = Instance.new("TextButton")
@@ -2713,21 +3640,8 @@ sellStatus.TextSize = 10
 sellStatus.TextColor3 = COLORS.muted
 sellStatus.TextXAlignment = Enum.TextXAlignment.Left
 sellStatus.Text = ""
-sellStatus.LayoutOrder = 18
+sellStatus.LayoutOrder = nextSetOrder()
 sellStatus.Parent = setWrap
-
-sellHint = Instance.new("TextLabel")
-sellHint.Size = UDim2.new(1, 0, 0, 36)
-sellHint.BackgroundTransparency = 1
-sellHint.Font = Enum.Font.Gotham
-sellHint.TextSize = 10
-sellHint.TextColor3 = COLORS.muted
-sellHint.TextWrapped = true
-sellHint.TextXAlignment = Enum.TextXAlignment.Left
-sellHint.Text = L("hint_sell")
-sellHint.LayoutOrder = 19
-sellHint.Parent = setWrap
-registerLocale(sellHint, "hint_sell")
 
 manualSellBtn.MouseButton1Click:Connect(function()
 	if sellInProgress then
@@ -2877,19 +3791,6 @@ saveBtn.Parent = discordBtns
 addCorner(saveBtn, 8)
 registerLocale(saveBtn, "btn_save")
 
-discordHint = Instance.new("TextLabel")
-discordHint.Size = UDim2.new(1, 0, 0, 48)
-discordHint.BackgroundTransparency = 1
-discordHint.Font = Enum.Font.Gotham
-discordHint.TextSize = 10
-discordHint.TextColor3 = COLORS.muted
-discordHint.TextWrapped = true
-discordHint.TextXAlignment = Enum.TextXAlignment.Left
-discordHint.Text = L("discord_hint")
-discordHint.LayoutOrder = 6
-discordHint.Parent = discordWrap
-registerLocale(discordHint, "discord_hint")
-
 function applyWebhookFromInput()
 	UserDiscordWebhook = webhookInput.Text:gsub("^%s+", ""):gsub("%s+$", "")
 	saveDiscordConfig()
@@ -2926,8 +3827,60 @@ testBtn.MouseButton1Click:Connect(function()
 	discordStatus.TextColor3 = ok and COLORS.accent or COLORS.red
 end)
 
+-- ESP (локальная вкладка — пути добавим позже)
+if MaxiHubESPLib and typeof(MaxiHubESPLib.buildTab) == "function" then
+	MaxiHubESPLib.buildTab(contentPages[4], {
+		COLORS = COLORS,
+		makeScrollPage = makeScrollPage,
+		makeListWrap = makeListWrap,
+		addCorner = addCorner,
+		makeSectionTitle = makeSectionTitle,
+		makeFlowToggle = makeFlowToggle,
+		makeFlowSlider = makeFlowSlider,
+		makeSlider = makeSlider,
+		L = L,
+		registerLocale = registerLocale,
+		getConfig = function()
+			return {
+				EspEnabled = EspEnabled,
+				EspTrees = EspTrees,
+				EspStones = EspStones,
+				EspPlayers = EspPlayers,
+				EspResources = EspResources,
+				EspDragons = EspDragons,
+				EspTracers = EspTracers,
+				EspNames = EspNames,
+				EspTextSize = EspTextSize,
+				EspColors = EspColors,
+			}
+		end,
+		onFieldChange = function(key, value)
+			if key == "EspEnabled" then EspEnabled = value
+			elseif key == "EspTrees" then EspTrees = value
+			elseif key == "EspStones" then EspStones = value
+			elseif key == "EspPlayers" then EspPlayers = value
+			elseif key == "EspResources" then EspResources = value
+			elseif key == "EspDragons" then EspDragons = value
+			elseif key == "EspTracers" then EspTracers = value
+			elseif key == "EspNames" then EspNames = value
+			elseif key == "EspTextSize" then EspTextSize = value
+			elseif key == "EspColors" then EspColors = value
+			end
+			refreshEsp()
+			scheduleSaveConfig()
+		end,
+	})
+end
+
 -- Кредиты (обязательная вкладка — не удалять)
-buildMaxiHubCreditsTab(contentPages[4], {
+buildMaxiHubChangelogTab(contentPages[5], {
+	COLORS = COLORS,
+	makeScrollPage = makeScrollPage,
+	makeListWrap = makeListWrap,
+	addCorner = addCorner,
+})
+
+buildMaxiHubCreditsTab(contentPages[6], {
 	COLORS = COLORS,
 	makeScrollPage = makeScrollPage,
 	makeListWrap = makeListWrap,
@@ -2944,6 +3897,7 @@ end)
 
 ui.finalize()
 applyMaxiHubLocale()
+refreshEsp()
 
 task.spawn(function()
 	while screenGui.Parent do
@@ -2995,6 +3949,7 @@ task.spawn(function()
 end)
 
 updateBlockedZoneVisual()
+applyRender3dState(Render3dDisabled, { silent = true, skipSave = true })
 
 if hasPendingSellState() then
 	resumePendingSellAfterBootstrap()

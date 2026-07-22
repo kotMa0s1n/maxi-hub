@@ -12,12 +12,24 @@ local CDN_RAW = "https://cdn.jsdelivr.net/gh/kotMa0s1n/maxi-hub@master/"
 
 local GUI_NAME = "MaxiHub"
 local CONFIG_FILE = "maxi-hub-config.json"
-local CORE_PATHS = { "maxi-hub/maxi-hub-core.lua", "maxi-hub-core.lua" }
-local KEY_PATHS = { "maxi-hub/maxi-hub-key.lua", "maxi-hub-key.lua" }
 
 local function getGenv()
 	return typeof(getgenv) == "function" and getgenv() or _G
 end
+
+local function getModulePaths(fileName)
+	local paths = {}
+	local genv = getGenv()
+	if type(genv.MaxiHubLocalRoot) == "string" and genv.MaxiHubLocalRoot ~= "" then
+		table.insert(paths, genv.MaxiHubLocalRoot .. "/" .. fileName)
+	end
+	table.insert(paths, "maxi-hub/" .. fileName)
+	table.insert(paths, fileName)
+	return paths
+end
+
+local CORE_PATHS = getModulePaths("maxi-hub-core.lua")
+local KEY_PATHS = getModulePaths("maxi-hub-key.lua")
 
 local function getOfficialRaw()
 	local genv = getGenv()
@@ -194,6 +206,11 @@ end
 
 local function saveUiLanguage(lang)
 	lang = (type(lang) == "string" and lang:lower() == "en") and "en" or "ru"
+	local genv = getGenv()
+	if typeof(genv.MaxiHubPatchConfig) == "function" then
+		genv.MaxiHubPatchConfig({ UiLanguage = lang })
+		return
+	end
 	if typeof(isfile) ~= "function" or typeof(readfile) ~= "function" or typeof(writefile) ~= "function" then
 		return
 	end
@@ -229,6 +246,10 @@ function registerRejoinHook(genv)
 		teleportSource = 'loadstring(game:HttpGet("' .. genv.MaxiHubLoaderUrl .. '"))()'
 	elseif genv.MaxiHubOfficialRaw then
 		teleportSource = 'loadstring(game:HttpGet("' .. genv.MaxiHubOfficialRaw .. 'loader.lua"))()'
+	elseif genv.MaxiHubRunPath and genv.MaxiHubRunPath ~= "" then
+		teleportSource = 'loadstring(readfile("' .. genv.MaxiHubRunPath .. '"))()'
+	elseif genv.MaxiHubLocalRoot and genv.MaxiHubLocalRoot ~= "" then
+		teleportSource = 'getgenv().MaxiHubLocalRoot="' .. genv.MaxiHubLocalRoot .. '"; getgenv().MaxiHubRepoOnly=false; loadstring(readfile("' .. genv.MaxiHubLocalRoot .. '/launcher.lua"))()'
 	else
 		teleportSource = 'loadstring(readfile("maxi-hub/launcher.lua"))()'
 	end
@@ -306,9 +327,15 @@ local function initKeyGate()
 	Key.showAuthGate(startHub)
 end
 
-local ok, err = pcall(initKeyGate)
+local ok, err
+if getGenv().MaxiHubSkipKey == true then
+	getGenv().MaxiHubUiLanguage = readUiLanguage()
+	ok, err = pcall(startHub)
+else
+	ok, err = pcall(initKeyGate)
+end
 if not ok then
-	warn("[MAXI HUB] Ошибка ключа:", err)
+	warn("[MAXI HUB] Ошибка запуска:", err)
 end
 
 

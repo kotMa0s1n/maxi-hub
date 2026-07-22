@@ -84,6 +84,10 @@ function MaxiHubKey.create(config)
 			return LocaleLib
 		end
 		local paths = { "maxi-hub/maxi-hub-locale.lua", "maxi-hub-locale.lua" }
+		local genv = typeof(getgenv) == "function" and getgenv() or _G
+		if type(genv.MaxiHubLocalRoot) == "string" and genv.MaxiHubLocalRoot ~= "" then
+			table.insert(paths, 1, genv.MaxiHubLocalRoot .. "/maxi-hub-locale.lua")
+		end
 		if typeof(readfile) == "function" and typeof(isfile) == "function" then
 			for _, path in ipairs(paths) do
 				if isfile(path) then
