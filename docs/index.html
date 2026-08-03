@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="MAXI HUB — AFK tree & stone farm, auto-sell, Telegram remote, ESP. One script for Roblox.">
+  <title>MAXI HUB — AFK farm · Telegram control</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0e1012;
+      --bg-elevated: #14181c;
+      --card: #1a2024;
+      --card-border: rgba(255, 255, 255, 0.06);
+      --text: #f2f6f8;
+      --muted: #8a959e;
+      --accent: #00c6b2;
+      --accent-soft: rgba(0, 198, 178, 0.14);
+      --accent-glow: rgba(0, 198, 178, 0.35);
+      --radius: 16px;
+      --radius-sm: 10px;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      --font: "Inter", system-ui, sans-serif;
+      --mono: "JetBrains Mono", monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    .bg-grid {
+      position: fixed; inset: 0; pointer-events: none;
+      background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(circle at 50% 20%, black 20%, transparent 75%);
+    }
+    .bg-glow {
+      position: fixed; width: 720px; height: 720px; border-radius: 50%;
+      filter: blur(120px); pointer-events: none; opacity: 0.35;
+    }
+    .bg-glow--teal { top: -200px; left: -120px; background: #00a896; }
+    .bg-glow--blue { top: 120px; right: -200px; background: #1d4ed8; opacity: 0.18; }
+    .container { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+    header {
+      position: sticky; top: 0; z-index: 50;
+      backdrop-filter: blur(14px);
+      background: rgba(14, 16, 18, 0.78);
+      border-bottom: 1px solid var(--card-border);
+    }
+    .nav { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; gap: 16px; }
+    .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.05rem; }
+    .logo-mark {
+      width: 36px; height: 36px; border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), #009e8e);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 8px 24px var(--accent-glow);
+    }
+    .nav-links { display: flex; gap: 28px; font-size: 0.92rem; color: var(--muted); }
+    .nav-links a:hover { color: var(--text); }
+    .nav-actions { display: flex; gap: 10px; align-items: center; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 11px 18px; border-radius: 999px; font-weight: 600; font-size: 0.92rem;
+      border: 1px solid transparent; cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary { background: linear-gradient(135deg, #00d4bf, #00a896); color: #042f2a; box-shadow: 0 12px 32px var(--accent-glow); }
+    .btn-ghost { background: rgba(255,255,255,0.04); border-color: var(--card-border); color: var(--text); }
+    .btn-outline { background: transparent; border-color: rgba(0, 198, 178, 0.4); color: var(--accent); }
+    .menu-toggle { display: none; background: none; border: 1px solid var(--card-border); color: var(--text); border-radius: 10px; padding: 8px 12px; cursor: pointer; }
+    .hero { padding: 72px 0 48px; }
+    .hero-grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 48px; align-items: center; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px;
+      border-radius: 999px; background: var(--accent-soft); color: var(--accent);
+      font-size: 0.78rem; font-weight: 600; margin-bottom: 20px;
+    }
+    .badge-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: clamp(2.2rem, 4.5vw, 3.4rem); line-height: 1.08; letter-spacing: -0.04em; margin: 0 0 20px; font-weight: 800; }
+    .gradient-text { background: linear-gradient(135deg, #fff 20%, var(--accent) 80%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .hero-lead { font-size: 1.08rem; color: var(--muted); max-width: 540px; margin-bottom: 28px; }
+    .hero-cta { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 32px; }
+    .hero-points { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .point { padding: 14px 16px; border-radius: var(--radius-sm); background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); font-size: 0.88rem; }
+    .point strong { display: block; font-size: 0.95rem; margin-bottom: 2px; }
+    .point span { color: var(--muted); }
+    section { padding: 64px 0; }
+    .section-head { text-align: center; max-width: 640px; margin: 0 auto 40px; }
+    .section-head h2 { font-size: clamp(1.6rem, 3vw, 2.2rem); margin: 0 0 12px; letter-spacing: -0.03em; }
+    .section-head p { color: var(--muted); margin: 0; }
+    .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .feature { padding: 22px; border-radius: var(--radius); background: var(--card); border: 1px solid var(--card-border); }
+    .feature.featured {
+      grid-column: span 1;
+      border-color: rgba(0, 198, 178, 0.35);
+      background: linear-gradient(180deg, rgba(0,198,178,0.08), var(--card));
+    }
+    .feature-icon { font-size: 1.35rem; margin-bottom: 10px; line-height: 1; }
+    .feature h3 { margin: 0 0 8px; font-size: 1.02rem; }
+    .feature p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+    .highlights { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+    .highlight {
+      padding: 24px 22px; border-radius: var(--radius);
+      background: linear-gradient(145deg, rgba(0,198,178,0.12), var(--card));
+      border: 1px solid rgba(0, 198, 178, 0.3);
+    }
+    .highlight h3 { margin: 0 0 8px; font-size: 1.15rem; }
+    .highlight p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+    .tabs-mock {
+      border-radius: 20px;
+      background: linear-gradient(180deg, #1a2024, #0e1012);
+      border: 1px solid var(--card-border);
+      padding: 14px;
+      box-shadow: var(--shadow);
+      font-size: 0.8rem;
+    }
+    .tabs-mock-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 10px 12px; border-bottom: 1px solid var(--card-border); margin-bottom: 10px;
+      font-weight: 700;
+    }
+    .tabs-mock-lang { display: flex; gap: 4px; }
+    .tabs-mock-lang span {
+      width: 26px; height: 26px; border-radius: 6px;
+      background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; font-size: 0.7rem;
+    }
+    .tabs-mock-lang span.on { background: var(--accent); color: #042f2a; }
+    .tabs-mock-body { display: grid; grid-template-columns: 92px 1fr; gap: 8px; min-height: 200px; }
+    .tabs-mock-side { display: flex; flex-direction: column; gap: 4px; }
+    .tabs-mock-side div {
+      padding: 7px 8px; border-radius: 8px; color: var(--muted);
+      background: rgba(255,255,255,0.03); font-size: 0.72rem;
+    }
+    .tabs-mock-side div.on { background: var(--accent); color: #042f2a; font-weight: 600; }
+    .tabs-mock-main { display: grid; gap: 8px; }
+    .tabs-mock-card {
+      padding: 10px 12px; border-radius: 10px;
+      background: rgba(255,255,255,0.04); border: 1px solid var(--card-border);
+    }
+    .tabs-mock-card strong { display: block; font-size: 0.75rem; margin-bottom: 4px; }
+    .tabs-mock-card span { color: var(--muted); font-size: 0.72rem; }
+    .script-block { border-radius: var(--radius); background: var(--bg-elevated); border: 1px solid var(--card-border); overflow: hidden; box-shadow: var(--shadow); }
+    .script-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--card-border); background: rgba(0,0,0,0.2); }
+    pre { margin: 0; padding: 20px 22px; font-family: var(--mono); font-size: 0.82rem; line-height: 1.7; color: #cbd5e1; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+    footer { padding: 40px 0 32px; border-top: 1px solid var(--card-border); margin-top: 32px; }
+    .footer-grid { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px; align-items: center; }
+    .footer-links { display: flex; gap: 20px; font-size: 0.88rem; color: var(--muted); }
+    .copy-toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: #1a2024; border: 1px solid var(--card-border); padding: 12px 20px;
+      border-radius: 999px; font-size: 0.88rem; opacity: 0; transition: transform 0.25s, opacity 0.25s; z-index: 100;
+    }
+    .copy-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    @media (max-width: 900px) {
+      .hero-grid, .features, .highlights { grid-template-columns: 1fr; }
+      .nav-links { display: none; }
+      .menu-toggle { display: block; }
+      .nav.open .nav-links {
+        display: flex; flex-direction: column; position: absolute; top: 64px; left: 20px; right: 20px;
+        background: var(--bg-elevated); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 16px;
+      }
+    }
+    @media (max-width: 600px) { .hero-points { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-glow bg-glow--teal"></div>
+  <div class="bg-glow bg-glow--blue"></div>
+
+  <header>
+    <div class="container nav" id="nav">
+      <a class="logo" href="#top"><span class="logo-mark">🔰</span> MAXI HUB</a>
+      <nav class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#script">Script</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="btn btn-ghost" href="https://discord.gg/6uJMtPKn29" target="_blank" rel="noopener">Discord</a>
+        <a class="btn btn-primary" href="https://funpay.com/users/6412543/" target="_blank" rel="noopener">Buy Premium</a>
+        <button class="menu-toggle" id="menuToggle" aria-label="Menu">☰</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container hero-grid">
+        <div>
+          <div class="badge"><span class="badge-dot"></span> AFK farm · Potassium PC</div>
+          <h1>Farm trees & stones.<br><span class="gradient-text">Sell. Control from phone.</span></h1>
+          <p class="hero-lead">
+            Turn on auto farm — the hub mines, collects loot, sells when inventory is full, and jumps back to the farm world.
+            Check stats and hit start/stop from Telegram while you’re away.
+          </p>
+          <div class="hero-cta">
+            <a class="btn btn-primary" href="#script">Copy script</a>
+            <a class="btn btn-outline" href="https://funpay.com/users/6412543/" target="_blank" rel="noopener">Get key</a>
+            <a class="btn btn-ghost" href="https://discord.gg/6uJMtPKn29" target="_blank" rel="noopener">Discord</a>
+          </div>
+          <div class="hero-points">
+            <div class="point"><strong>🌲 Auto farm</strong><span>Trees & stones · orbit · auto loot</span></div>
+            <div class="point"><strong>💰 Auto-sell</strong><span>Full inv → sell → back to farm</span></div>
+            <div class="point"><strong>📱 Telegram</strong><span>Start, stop, sell from chat</span></div>
+            <div class="point"><strong>👁 ESP</strong><span>Resources, players, dragons on screen</span></div>
+          </div>
+        </div>
+        <div class="tabs-mock">
+          <div class="tabs-mock-head">
+            <span>🔰 MAXI HUB · farming</span>
+            <span style="color:var(--accent);font-size:0.72rem;">● LIVE</span>
+          </div>
+          <div class="tabs-mock-body" style="grid-template-columns:1fr;">
+            <div class="tabs-mock-main">
+              <div class="tabs-mock-card" style="border-color:rgba(0,198,178,0.35);">
+                <strong style="color:var(--accent);">Auto farm · ON</strong>
+                <span>12m 04s · Trees 847 · Stones 312</span>
+              </div>
+              <div class="tabs-mock-card">
+                <strong>Auto-sell · triggered</strong>
+                <span>Selling loot → return to farm world</span>
+              </div>
+              <div class="tabs-mock-card">
+                <strong>📱 Telegram · /status</strong>
+                <span>Loot, time, phase — right in chat</span>
+              </div>
+              <div class="tabs-mock-card">
+                <strong>ESP · resources ON</strong>
+                <span>See nodes and players through the map</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="container">
+        <div class="section-head">
+          <h2>Why players use it</h2>
+          <p>The stuff you actually feel in-game — not menu clutter.</p>
+        </div>
+        <div class="highlights">
+          <article class="highlight">
+            <h3>🌲 AFK farm</h3>
+            <p>Mines trees and stones, circles targets, picks up drops. Session timer and live stats in the menu.</p>
+          </article>
+          <article class="highlight">
+            <h3>💰 Auto-sell</h3>
+            <p>Inventory full? Teleport to sell, dump loot, return to the farm map — no manual trips.</p>
+          </article>
+          <article class="highlight">
+            <h3>📱 Telegram remote</h3>
+            <p>Start, stop, sell and /status from your phone. Farm reports land in chat on a schedule.</p>
+          </article>
+        </div>
+        <div class="features">
+          <article class="feature featured"><div class="feature-icon">👁</div><h3>ESP</h3><p>Highlight resources, players and dragons. Tracers and custom colors.</p></article>
+          <article class="feature featured"><div class="feature-icon">📊</div><h3>Discord reports</h3><p>Farm stats and sell summaries to your webhook — see progress without opening Roblox.</p></article>
+          <article class="feature featured"><div class="feature-icon">⚙️</div><h3>Fine-tuned mining</h3><p>Orbit speed, smooth TP between nodes, red zones where farm won’t go.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="script">
+      <div class="container">
+        <div class="section-head">
+          <h2>Start in 10 seconds</h2>
+          <p>Copy → paste in Potassium → enter your key from FunPay.</p>
+        </div>
+        <div class="script-block">
+          <div class="script-head">
+            <span>loader</span>
+            <button class="btn btn-outline" id="copyBtn" type="button">Copy</button>
+          </div>
+          <pre id="scriptCode">loadstring(game:HttpGet("https://raw.githubusercontent.com/kotMa0s1n/maxi-hub/master/loader.lua"))()</pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq">
+      <div class="container">
+        <div class="section-head"><h2>FAQ</h2></div>
+        <div style="max-width:640px;margin:0 auto;color:var(--muted);font-size:0.92rem;display:grid;gap:16px;">
+          <p><strong style="color:var(--text);">Need a key?</strong> <a href="https://funpay.com/users/6412543/" style="color:var(--accent);">FunPay</a> → paste when the hub asks.</p>
+          <p><strong style="color:var(--text);">Telegram?</strong> BotFather → token + your chat ID in the Telegram tab → /start, /stop, /sell, /status.</p>
+          <p><strong style="color:var(--text);">What executor?</strong> Potassium on PC works best.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container footer-grid">
+      <div class="logo"><span class="logo-mark">🔰</span> MAXI HUB</div>
+      <div class="footer-links">
+        <a href="https://discord.gg/6uJMtPKn29" target="_blank" rel="noopener">Discord</a>
+        <a href="https://funpay.com/users/6412543/" target="_blank" rel="noopener">FunPay</a>
+      </div>
+      <span style="color:var(--muted);font-size:0.82rem;">© MAXI HUB · not affiliated with Roblox</span>
+    </div>
+  </footer>
+
+  <div class="copy-toast" id="toast">Script copied</div>
+  <script>
+    const code = document.getElementById("scriptCode").textContent;
+    document.getElementById("copyBtn").addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(code); } catch {
+        const ta = document.createElement("textarea"); ta.value = code; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove();
+      }
+      const toast = document.getElementById("toast"); toast.classList.add("show"); setTimeout(() => toast.classList.remove("show"), 2200);
+    });
+    document.getElementById("menuToggle").addEventListener("click", () => document.getElementById("nav").classList.toggle("open"));
+  </script>
+</body>
+</html>
